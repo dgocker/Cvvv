@@ -117,7 +117,7 @@ pre{margin:0;tab-size:4;background:#0c0e11;border:1px solid var(--line);border-r
 
 <div class="wrap">
   <header>
-    <p class="eyebrow">Прототип HUD · 10 стилей · под Godot 4</p>
+    <p class="eyebrow">Прототип HUD · 20 стилей · под Godot 4</p>
     <h1>Радиальное меню скиллов</h1>
     <p class="lede">Вместо панели быстрого доступа внизу — одна светящаяся кнопка. <b>Нажмите</b> на неё, и меню останется открытым: выберите умение касанием. <b>Зажмите и ведите палец</b> в сторону умения, затем отпустите — оно применится без лишних нажатий.</p>
     <ul class="gestures" aria-label="Жесты">
@@ -162,10 +162,18 @@ pre{margin:0;tab-size:4;background:#0c0e11;border:1px solid var(--line);border-r
     </div>
   </section>
 
+  <section aria-labelledby="gal-around-h">
+    <div class="sec-head">
+      <h2 id="gal-around-h">Вокруг кнопки</h2>
+      <p>Кнопка — центр меню, умения раскрываются прямо из неё. Для полного кольца кнопка стоит чуть выше края экрана.</p>
+    </div>
+    <div class="cards" id="cards-around"></div>
+  </section>
+
   <section aria-labelledby="gal-h">
     <div class="sec-head">
-      <h2 id="gal-h">Десять вариантов</h2>
-      <p>Нажмите на карточку, чтобы попробовать вариант на экране выше.</p>
+      <h2 id="gal-h">Над кнопкой</h2>
+      <p>Кольцо открывается над кнопкой, палец работает как стик: важно направление, а не точка касания.</p>
     </div>
     <div class="cards" id="cards"></div>
   </section>
@@ -496,12 +504,13 @@ function holdRing(ctx, T, col, r = 38) {
 }
 
 /* ============ layout & selection math ============ */
+const isArc = (L) => L.type === "arc" || L.type === "gauge";
 function slotAngle(L, i) {
-  return L.type === "ring" || L.type === "star" ? L.start + (i * TAU) / N : L.start + (i * L.sweep) / (N - 1);
+  return isArc(L) ? L.start + (i * L.sweep) / (N - 1) : L.start + (i * TAU) / N;
 }
-function slotRadius(L, i) { return L.type === "star" && i % 2 ? L.R2 : L.R; }
+function slotRadius(L, i) { return L.R2 && i % 2 ? L.R2 : L.R; }
 function pickByAngle(L, a) {
-  if (L.type === "ring" || L.type === "star") {
+  if (!isArc(L)) {
     const step = TAU / N;
     return Math.round(wrapPos(a - L.start) / step) % N;
   }
@@ -511,14 +520,34 @@ function pickByAngle(L, a) {
   if (rel < -tol || rel > L.sweep + tol) return -1;
   return clamp(Math.round(rel / step), 0, N - 1);
 }
+// Base position of slot i in menu units (ellipse: point on the orbit, tiers: explicit points)
+function slotPos(L, i) {
+  if (L.type === "tiers") return L.pts[i];
+  const a = slotAngle(L, i);
+  if (L.type === "ellipse") return { x: Math.cos(a) * L.rx, y: Math.sin(a) * L.ry };
+  const r = slotRadius(L, i);
+  return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+}
+// Finger offset in menu units → slot index or -1. Tiers pick the nearest slot, the rest pick by direction.
+function pickSlot(L, v) {
+  if (L.type === "tiers") {
+    let best = -1, bd = Infinity;
+    L.pts.forEach((q, i) => { const d = Math.hypot(v.x - q.x, v.y - q.y); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+  if (L.type === "ellipse") return pickByAngle(L, Math.atan2(v.y / L.ry, v.x / L.rx));
+  return pickByAngle(L, Math.atan2(v.y, v.x));
+}
+// Distance used by the tap band; for the ellipse it is % of the orbit
+function bandDist(L, v) { return L.type === "ellipse" ? Math.hypot(v.x / L.rx, v.y / L.ry) * 100 : Math.hypot(v.x, v.y); }
 // Scale is relative to a 576-unit tall screen (the reference screenshot), then fitted so the menu stays on screen.
 function computeView(W, H, V, sizeMul, ins, fit = false) {
-  const L = V.L, lift = L.anchor === "trigger" ? 0 : L.lift ?? 32 + 12 + (L.lowExt ?? L.ext);
-  const needW = 2 * (L.wExt ?? L.ext) + 16, needH = 50 + lift + L.ext + 10;
+  const L = V.L, tb = L.tb ?? 50, lift = L.anchor === "trigger" ? 0 : L.lift ?? 32 + 12 + (L.lowExt ?? L.ext);
+  const needW = 2 * (L.wExt ?? L.ext) + 16, needH = tb + lift + L.ext + 10;
   const aw = W - ins.l - ins.r, ah = H - ins.t - ins.b;
   let s = Math.min(fit ? 9 : ah / 576, aw / needW, ah / needH);
   s = clamp(s, 0.3, 1.7) * sizeMul;
-  const T = { x: ins.l + aw / 2, y: H - ins.b - 50 * s, r: 32 * s };
+  const T = { x: ins.l + aw / 2, y: H - ins.b - tb * s, r: 32 * s };
   const c = { x: T.x, y: T.y - lift * s };
   if (L.anchor !== "trigger") c.y = Math.max(c.y, ins.t + L.ext * s + 4);
   return { W, H, s, T, c };
@@ -539,15 +568,17 @@ function buildModel(view, V, ms, now, opt) {
     mode: ms.mode, sticky: ms.mode === "sticky", drag: ms.mode === "drag", hover: ms.hover, hoverT: ms.hoverT, any: ms.any,
     time: now / 1000, dt: opt.dt || 1 / 60, dead: opt.dead, vs: ms.vs,
     trig: { x: (view.T.x - view.c.x) / view.s, y: (view.T.y - view.c.y) / view.s },
-    cursor: null, ang: [], rad: [], cd: [], cdLeft: [], shk: [], order: [],
+    cursor: null, ang: [], rad: [], pos: [], par: [], cd: [], cdLeft: [], shk: [], order: [],
     castIndex: ms.castIndex, castK: clamp((now - ms.castAt) / 520, 0, 1),
   };
   if (ms.mode === "drag" && ms.cursor) {
-    const k = ms.cursor, d = Math.hypot(k.x, k.y), lim = L.R2 ?? L.R;
-    M.cursor = d > lim ? { x: (k.x / d) * lim, y: (k.y / d) * lim } : { ...k };
+    const k = ms.cursor, d = L.type === "ellipse" ? Math.hypot(k.x / L.rx, k.y / L.ry) : Math.hypot(k.x, k.y) / (L.R2 ?? L.R);
+    M.cursor = d > 1 ? { x: k.x / d, y: k.y / d } : { ...k };
   }
   for (let i = 0; i < N; i++) {
-    M.ang[i] = slotAngle(L, i); M.rad[i] = slotRadius(L, i);
+    const q = slotPos(L, i);
+    M.pos[i] = q; M.par[i] = slotAngle(L, i); M.rad[i] = Math.hypot(q.x, q.y);
+    M.ang[i] = L.type === "tiers" || L.type === "ellipse" ? Math.atan2(q.y, q.x) : M.par[i];
     const left = Math.max(0, (opt.cdEnd[i] - now) / 1000);
     M.cdLeft[i] = left; M.cd[i] = left / SKILLS[i].cd;
     const st = now - ms.shakeAt[i];
@@ -571,19 +602,24 @@ function renderScene(ctx, view, V, ms, now, opt) {
   if (ms.mode !== "closed") { ctx.fillStyle = `rgba(4,6,10,${(V.dim ?? 0.3) * M.t})`; ctx.fillRect(0, 0, view.W, view.H); }
   if (opt.fx) drawFx(ctx, opt.fx, now, s);
   const TS = { time: now / 1000, pressed: ms.pressed, hold: opt.hold || 0, open: ms.mode === "closed" ? 0 : M.t, idle: !opt.reduce };
-  ctx.save(); ctx.translate(view.T.x, view.T.y); ctx.scale(s, s); V.trigger(ctx, TS); ctx.restore();
-  if (opt.hint) drawHint(ctx, view, now);
+  const drawTrigger = () => {
+    ctx.save(); ctx.translate(view.T.x, view.T.y); ctx.scale(s, s); V.trigger(ctx, TS); ctx.restore();
+    if (opt.hint) drawHint(ctx, view, now);
+  };
+  // a menu centred on the button keeps the button on top, so it reads as the centre of the menu
+  const onTop = V.L.anchor === "trigger" && ms.mode !== "closed";
+  if (!onTop) drawTrigger();
   if (ms.mode === "closed") return M;
   ctx.save(); ctx.translate(view.c.x, view.c.y); ctx.scale(s, s);
   V.draw(ctx, M);
   if (M.castIndex >= 0 && M.castK < 1) {
-    const i = M.castIndex, a = M.ang[i], r = M.rad[i], k = M.castK, col = SKILLS[i].color;
-    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    const i = M.castIndex, k = M.castK, col = SKILLS[i].color, x = M.pos[i].x, y = M.pos[i].y;
     glow(ctx, x, y, 40 + 50 * k, col, 1 - k);
     circle(ctx, x, y, 24 + 40 * ease.outCubic(k)); ctx.lineWidth = 3 * (1 - k); ctx.strokeStyle = rgba(col, 1 - k); ctx.stroke();
   }
   if (opt.debug) drawDebug(ctx, M);
   ctx.restore();
+  if (onTop) drawTrigger();
   return M;
 }
 function drawDebug(ctx, M) {
@@ -592,13 +628,27 @@ function drawDebug(ctx, M) {
   circle(ctx, 0, 0, M.dead); ctx.fillStyle = "rgba(255,80,80,.18)"; ctx.fill(); ctx.strokeStyle = "rgba(255,120,120,.9)"; ctx.stroke();
   circle(ctx, 0, 0, band[0]); ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(120,220,255,.8)"; ctx.stroke();
   circle(ctx, 0, 0, band[1]); ctx.stroke(); ctx.setLineDash([]);
-  const half = L.type === "ring" || L.type === "star" ? TAU / N / 2 : L.sweep / (N - 1) / 2;
+  if (L.type === "tiers") {
+    L.pts.forEach((q) => { circle(ctx, q.x, q.y, L.tapR); ctx.strokeStyle = "rgba(120,220,255,.8)"; ctx.stroke(); });
+    ctx.restore(); return;
+  }
+  if (L.type === "ellipse") {
+    [band[0], band[1]].forEach((b) => { ctx.beginPath(); ctx.ellipse(0, 0, (L.rx * b) / 100, (L.ry * b) / 100, 0, 0, TAU); ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(120,220,255,.8)"; ctx.stroke(); });
+    ctx.setLineDash([]);
+    for (let i = 0; i < N; i++) {
+      const a = M.par[i] - TAU / N / 2, f = band[1] / 100;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * L.rx * 0.3, Math.sin(a) * L.ry * 0.3); ctx.lineTo(Math.cos(a) * L.rx * f, Math.sin(a) * L.ry * f);
+      ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.stroke();
+    }
+    ctx.restore(); return;
+  }
+  const half = !isArc(L) ? TAU / N / 2 : L.sweep / (N - 1) / 2;
   for (let i = 0; i < N; i++) {
     const a = M.ang[i] - half;
     ctx.beginPath(); ctx.moveTo(Math.cos(a) * M.dead, Math.sin(a) * M.dead); ctx.lineTo(Math.cos(a) * band[1], Math.sin(a) * band[1]);
     ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.stroke();
   }
-  if (L.type === "arc" || L.type === "gauge") {
+  if (isArc(L)) {
     const a = M.ang[N - 1] + half;
     ctx.beginPath(); ctx.moveTo(Math.cos(a) * M.dead, Math.sin(a) * M.dead); ctx.lineTo(Math.cos(a) * band[1], Math.sin(a) * band[1]); ctx.stroke();
   }
@@ -1373,6 +1423,652 @@ VARIANTS.push({
     drawKnob(ctx, M, "#ff8a2a");
   },
 });
+/* ============ variants 11–20: the menu opens around the button itself ============ */
+function pill(ctx, text, x, y, o = {}) {
+  const fs = o.size || 14;
+  ctx.font = `${o.weight || 600} ${fs}px ${o.family || FONT.ui}`;
+  const w = ctx.measureText(text).width + 24, h = fs + 14;
+  ctx.beginPath(); rrectPath(ctx, x - w / 2, y - h / 2, w, h, h / 2);
+  ctx.fillStyle = o.bg || "rgba(10,12,16,.88)"; ctx.fill();
+  if (o.border) { ctx.lineWidth = 1; ctx.strokeStyle = o.border; ctx.stroke(); }
+  ctx.fillStyle = o.color || "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, x, y + 1);
+}
+// Name of the chosen skill (or a hint) in a pill above the menu
+function aroundLabel(ctx, M, y, o) {
+  const on = M.hover >= 0;
+  ctx.save(); ctx.globalAlpha *= M.t * (on ? 0.4 + 0.6 * M.hoverT[M.hover] : 0.85);
+  pill(ctx, on ? `${SKILLS[M.hover].name} · MP ${SKILLS[M.hover].mp}` : idleText(M), 0, y, on ? o : { ...o, size: 13, color: o.idle || o.color });
+  ctx.restore();
+}
+function petalPath(ctx, r0, r1, w) {
+  const L = r1 - r0;
+  ctx.beginPath(); ctx.moveTo(r0, 0);
+  ctx.bezierCurveTo(r0 + L * 0.3, -w * 0.9, r1 - L * 0.25, -w * 1.15, r1, 0);
+  ctx.bezierCurveTo(r1 - L * 0.25, w * 1.15, r0 + L * 0.3, w * 0.9, r0, 0);
+  ctx.closePath();
+}
+function gearPath(ctx, r0, r1, teeth, rot) {
+  const st = TAU / teeth;
+  ctx.beginPath();
+  for (let k = 0; k < teeth; k++) {
+    const a = rot + k * st;
+    [[r0, a], [r1, a + st * 0.18], [r1, a + st * 0.47], [r0, a + st * 0.65]].forEach(([r, aa], j) => {
+      const x = Math.cos(aa) * r, y = Math.sin(aa) * r;
+      k === 0 && j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.arc(0, 0, r0, a + st * 0.65, a + st);
+  }
+  ctx.closePath();
+}
+function brass(ctx, r) {
+  const g = ctx.createLinearGradient(-r, -r, r, r);
+  g.addColorStop(0, "#f0c96e"); g.addColorStop(0.45, "#c9963f"); g.addColorStop(1, "#6e4a1c");
+  return g;
+}
+function wobblePath(ctx, x, y, r, n, amp, seed) {
+  ctx.beginPath();
+  for (let k = 0; k <= n; k++) {
+    const a = (k * TAU) / n, rr = r * (1 + amp * Math.sin(k * 2.7 + seed) * Math.cos(k * 1.3 + seed * 0.5));
+    k ? ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) : ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+}
+function lancetPath(ctx, r0, r1, step) {
+  const w0 = r0 * Math.tan(step / 2) * 0.78, rm = r1 - 30, w1 = rm * Math.tan(step / 2) * 0.82;
+  ctx.beginPath(); ctx.moveTo(r0, -w0); ctx.lineTo(rm, -w1);
+  ctx.quadraticCurveTo(r1 - 6, -w1 * 0.85, r1, 0); ctx.quadraticCurveTo(r1 - 6, w1 * 0.85, rm, w1);
+  ctx.lineTo(r0, w0); ctx.closePath();
+}
+
+/* 11 — Halo: full ring of light orbs around the button */
+VARIANTS.push({
+  key: "halo", group: "around", name: "Ореол",
+  desc: "Кольцо светящихся сфер прямо вокруг кнопки. При открытии из неё расходится световая волна, к выбранной сфере тянется луч.",
+  tags: ["кольцо вокруг кнопки", "свет", "волна"],
+  dim: 0.3,
+  L: { type: "ring", R: 104, slot: 50, start: -Math.PI / 2, anchor: "trigger", tb: 142, ext: 172, wExt: 136, hit: [36, 156], openMs: 360, closeMs: 170 },
+  pal: { "Свет": "#fff3c4", "Золото": "#ffd36b", "Сфера": "#1b1830", "Текст": "#5a3d0c" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 64 + 8 * pu, "#ffe6a0", 0.35 + 0.35 * pu * (1 - T.open * 0.6));
+    ctx.save(); ctx.scale(p, p);
+    ctx.save(); ctx.rotate(T.time * 0.3); ctx.fillStyle = "rgba(255,243,196,.55)";
+    for (let k = 0; k < 12; k++) { ctx.rotate(TAU / 12); ctx.beginPath(); ctx.moveTo(-1.6, -34); ctx.lineTo(0, k % 2 ? -42 : -48); ctx.lineTo(1.6, -34); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+    const g = ctx.createRadialGradient(-6, -10, 2, 0, 0, 34); g.addColorStop(0, "#fffbe8"); g.addColorStop(0.55, "#f3cf7a"); g.addColorStop(1, "#a8782a");
+    circle(ctx, 0, 0, 31); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.stroke();
+    wheelGlyph(ctx, "#5a3d0c", T.open);
+    ctx.restore(); holdRing(ctx, T, "#fff3c4", 40);
+  },
+  draw(ctx, M) {
+    const R = 104, t = M.t, cl = M.closing;
+    if (!cl && M.raw < 1) {
+      const k = M.raw;
+      glow(ctx, 0, 0, 120 + 80 * k, "#fff0c0", 0.55 * (1 - k));
+      circle(ctx, 0, 0, 34 + 150 * ease.outCubic(k)); ctx.lineWidth = 6 * (1 - k); ctx.strokeStyle = `rgba(255,243,196,${0.85 * (1 - k)})`; ctx.stroke();
+    }
+    ctx.save(); ctx.globalAlpha = t;
+    circle(ctx, 0, 0, R); ctx.lineWidth = 48; ctx.strokeStyle = "rgba(255,236,180,.12)"; ctx.stroke();
+    ctx.lineWidth = 1.6; ctx.strokeStyle = "rgba(255,243,196,.6)"; ctx.stroke();
+    ctx.save(); ctx.rotate(M.time * 0.15); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = "rgba(255,240,200,.07)";
+    for (let k = 0; k < 20; k++) { ctx.rotate(TAU / 20); ctx.beginPath(); ctx.moveTo(-3, -36); ctx.lineTo(0, -150); ctx.lineTo(3, -36); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+    ctx.restore();
+    if (M.hover >= 0) {
+      const h = M.hoverT[M.hover], q = M.pos[M.hover], g = ctx.createLinearGradient(0, 0, q.x, q.y);
+      g.addColorStop(0, "rgba(255,243,196,0)"); g.addColorStop(1, `rgba(255,250,225,${0.9 * h * t})`);
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = g; ctx.lineCap = "round";
+      ctx.lineWidth = 10; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(q.x, q.y); ctx.stroke();
+      ctx.lineWidth = 2.2; ctx.globalAlpha = 1; ctx.stroke(); ctx.restore();
+    }
+    for (const i of M.order) {
+      const p = M.stag(i, 0.5), e = cl ? p : ease.outBack(p, 1.8), h = M.hoverT[i], a = M.ang[i];
+      const r = R * e + 8 * h, x = Math.cos(a) * r + M.shk[i], y = Math.sin(a) * r, sz = 50 * (0.5 + 0.5 * Math.min(e, 1)) * (1 + 0.2 * h);
+      ctx.save(); ctx.globalAlpha = clamp(p * 2, 0, 1) * (cl ? t : 1);
+      glow(ctx, x, y, sz * 1.15, "#ffe6a0", 0.3 + 0.6 * h);
+      circle(ctx, x, y, sz / 2); ctx.fillStyle = "#1b1830"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz - 6);
+      drawCooldown(ctx, M, i, x, y, sz - 6);
+      circle(ctx, x, y, sz / 2 - 1); ctx.lineWidth = 2 + 1.5 * h; ctx.strokeStyle = mix("#f3d58e", "#ffffff", h); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, sz / 2 - 4, Math.PI * 1.1, Math.PI * 1.45); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.stroke();
+      ctx.restore();
+    }
+    aroundLabel(ctx, M, -(R + 25 + 28), { bg: "rgba(255,248,225,.94)", border: "rgba(168,120,42,.6)", color: "#5a3d0c", idle: "#8a6a2a" });
+    drawKnob(ctx, M, "#ffd36b");
+  },
+});
+
+/* 12 — Stone arch: ten blocks drop into an arch over the button */
+VARIANTS.push({
+  key: "arch", group: "around", name: "Каменная арка",
+  desc: "Над кнопкой поднимается арка из десяти каменных блоков: они по очереди падают на место. Выбранный блок выдвигается и светится рунами.",
+  tags: ["арка 180°", "камень", "руны"],
+  dim: 0.26,
+  L: { type: "arc", R: 158, slot: 42, start: Math.PI + Math.PI / 20, sweep: Math.PI * 0.9, anchor: "trigger", tb: 50, ext: 258, wExt: 214, tol: 0.4, hit: [40, 214], rIn: 112, rOut: 204, openMs: 440, closeMs: 170 },
+  pal: { "Камень": "#8a8478", "Тень": "#4d4842", "Руны": "#6fe3ff", "Текст": "#efe6d2" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 58 + 8 * pu, "#6fe3ff", 0.22 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    const g = ctx.createRadialGradient(-8, -10, 2, 0, 0, 34); g.addColorStop(0, "#b3ab9c"); g.addColorStop(1, "#4d4842");
+    circle(ctx, 0, 0, 31); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#2b2723"; ctx.stroke();
+    circle(ctx, 0, 0, 25); ctx.lineWidth = 1.2; ctx.strokeStyle = `rgba(111,227,255,${0.45 + 0.4 * pu})`; ctx.stroke();
+    wheelGlyph(ctx, "#e8fbff", T.open);
+    ctx.restore(); holdRing(ctx, T, "#6fe3ff", 40);
+  },
+  draw(ctx, M) {
+    const L = M.L, t = M.t, cl = M.closing, step = Math.PI / 10;
+    ctx.save(); ctx.globalAlpha = t * 0.6; ctx.beginPath(); ctx.ellipse(0, 6, 222, 20, 0, 0, TAU); ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fill(); ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.6), e = cl ? 1 : ease.outBack(p, 1.3), h = M.hoverT[i], a = M.ang[i], dx = Math.cos(a), dy = Math.sin(a);
+      ctx.save(); ctx.globalAlpha = clamp(p * 2.2, 0, 1) * (cl ? t : 1);
+      ctx.translate(dx * 10 * h + M.shk[i], dy * 10 * h - (1 - e) * 70);
+      const r1 = L.rOut + 6 * h;
+      sectorPath(ctx, L.rIn, r1, a - step / 2, a + step / 2, 1.6);
+      const g = ctx.createLinearGradient(dx * L.rIn, dy * L.rIn, dx * r1, dy * r1);
+      g.addColorStop(0, "#56514a"); g.addColorStop(0.6, "#8a8478"); g.addColorStop(1, "#a9a294");
+      ctx.fillStyle = g; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(28,24,20,.85)"; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, r1 - 2.5, a - step / 2 + 0.02, a + step / 2 - 0.02); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(255,250,235,.35)"; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(dx * (L.rIn + 12), dy * (L.rIn + 12)); ctx.lineTo(dx * (L.rIn + 20) + dy * 5, dy * (L.rIn + 20) - dx * 5);
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(30,26,22,.5)"; ctx.stroke();
+      if (h > 0.01) {
+        sectorPath(ctx, L.rIn + 4, r1 - 4, a - step / 2 + 0.02, a + step / 2 - 0.02, 1.6);
+        ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.lineWidth = 2; ctx.strokeStyle = `rgba(111,227,255,${0.85 * h})`; ctx.stroke(); ctx.restore();
+        glow(ctx, dx * L.R, dy * L.R, 64, "#6fe3ff", 0.35 * h);
+      }
+      const ix = dx * L.R, iy = dy * L.R, sz = 40 * (1 + 0.12 * h);
+      circle(ctx, ix, iy, sz / 2 + 3); ctx.fillStyle = "#2f2b26"; ctx.fill();
+      drawIcon(ctx, i, ix, iy, sz, "circle", 1 - 0.35 * M.any * (1 - h));
+      drawCooldown(ctx, M, i, ix, iy, sz);
+      circle(ctx, ix, iy, sz / 2 + 1.5); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save(); ctx.globalAlpha = t;
+    ctx.beginPath(); ctx.moveTo(-10, -L.rOut + 2); ctx.lineTo(10, -L.rOut + 2); ctx.lineTo(6, -L.rOut - 16); ctx.lineTo(-6, -L.rOut - 16); ctx.closePath();
+    ctx.fillStyle = "#9c9587"; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(28,24,20,.85)"; ctx.stroke();
+    ctx.restore();
+    aroundLabel(ctx, M, -(L.rOut + 40), { bg: "rgba(45,41,37,.94)", border: "#8a8274", color: "#efe6d2", idle: "#bdb4a3" });
+    drawKnob(ctx, M, "#6fe3ff");
+  },
+});
+
+/* 13 — Flower: petals unfold from the button like a bud */
+VARIANTS.push({
+  key: "flower", group: "around", name: "Цветок",
+  desc: "Лепестки раскрываются из кнопки, как бутон, на 240°. Выбранный лепесток вытягивается и рассыпает пыльцу.",
+  tags: ["лепестки 240°", "бутон", "природа"],
+  dim: 0.24,
+  L: { type: "gauge", R: 116, slot: 44, start: (Math.PI * 5) / 6, sweep: (Math.PI * 4) / 3, anchor: "trigger", tb: 112, ext: 224, wExt: 178, tol: 0.26, hit: [36, 180], openMs: 480, closeMs: 170 },
+  pal: { "Лепесток": "#f07fb0", "Светлый": "#ffe3ef", "Листья": "#4a9f55", "Текст": "#5a1d3a" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 58 + 8 * pu, "#ff9cc8", 0.28 + 0.32 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    for (let k = 0; k < 6; k++) {
+      ctx.save(); ctx.rotate((k * TAU) / 6 + T.time * 0.2); petalPath(ctx, 4, 34, 12);
+      const g = ctx.createLinearGradient(4, 0, 34, 0); g.addColorStop(0, "#ffe3ef"); g.addColorStop(1, "#d9578f");
+      ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(120,30,70,.5)"; ctx.stroke(); ctx.restore();
+    }
+    const c = ctx.createRadialGradient(-3, -3, 1, 0, 0, 13); c.addColorStop(0, "#fff6c2"); c.addColorStop(1, "#e0a81e");
+    circle(ctx, 0, 0, 12); ctx.fillStyle = c; ctx.fill();
+    crossGlyph(ctx, "#5a1d3a", T.open);
+    ctx.restore(); holdRing(ctx, T, "#ffd1e6", 40);
+  },
+  draw(ctx, M) {
+    const L = M.L, t = M.t, cl = M.closing, mid = L.start + L.sweep / 2, grow = cl ? 1 : ease.outCubic(M.raw);
+    ctx.save(); ctx.globalAlpha = t;
+    for (let k = 0; k < 8; k++) {
+      ctx.save(); ctx.rotate((k * TAU) / 8 + 0.2); petalPath(ctx, 24, 24 + 30 * grow, 9);
+      ctx.fillStyle = "#4a9f55"; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(20,60,25,.6)"; ctx.stroke(); ctx.restore();
+    }
+    ctx.restore();
+    for (const i of M.order) {
+      const rank = Math.abs(i - (N - 1) / 2) / ((N - 1) / 2), p = M.stag(i, 0.45, rank), e = cl ? 1 : ease.outBack(p, 1.4), h = M.hoverT[i];
+      const a = lerp(mid, M.ang[i], Math.min(1, e)), r1 = 34 + 126 * e + 18 * h;
+      ctx.save(); ctx.globalAlpha = clamp(p * 2, 0, 1) * (cl ? t : 1);
+      ctx.save(); ctx.rotate(a); petalPath(ctx, 34, r1, 24);
+      const g = ctx.createLinearGradient(34, 0, r1, 0);
+      g.addColorStop(0, "#ffe3ef"); g.addColorStop(0.55, h > 0.01 ? mix("#f07fb0", "#ff5fa2", h) : "#f07fb0"); g.addColorStop(1, "#c94f86");
+      ctx.fillStyle = g; ctx.fill();
+      if (M.any > 0 && h < 1) { ctx.fillStyle = `rgba(40,10,30,${0.25 * M.any * (1 - h)})`; ctx.fill(); }
+      ctx.lineWidth = 1.2 + h; ctx.strokeStyle = h > 0.5 ? "rgba(255,255,255,.95)" : "rgba(120,30,70,.45)"; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(40, 0); ctx.lineTo(r1 - 14, 0); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.stroke();
+      ctx.restore();
+      const ir = 116 * Math.min(e, 1.05) + 10 * h, x = Math.cos(a) * ir + M.shk[i], y = Math.sin(a) * ir, sz = 44 * (1 + 0.14 * h) * Math.min(Math.max(e, 0), 1);
+      if (sz > 2) {
+        circle(ctx, x, y, sz / 2 + 2.5); ctx.fillStyle = "#fff4f8"; ctx.fill();
+        drawIcon(ctx, i, x, y, sz);
+        drawCooldown(ctx, M, i, x, y, sz);
+      }
+      ctx.restore();
+    }
+    if (M.hover >= 0) {
+      const h = M.hoverT[M.hover], a = M.ang[M.hover];
+      for (let k = 0; k < 7; k++) {
+        const tw = 0.5 + 0.5 * Math.sin(M.time * 4 + k * 1.7), rr = 128 + 44 * (((k * 37) % 10) / 10), aa = a + ((k % 3) - 1) * 0.13;
+        glow(ctx, Math.cos(aa) * rr, Math.sin(aa) * rr, 6 + 5 * tw, "#fff2a8", h * tw);
+      }
+    }
+    aroundLabel(ctx, M, -(178 + 30), { bg: "rgba(255,244,248,.95)", border: "rgba(201,79,134,.6)", color: "#5a1d3a", idle: "#8a4a68" });
+    drawKnob(ctx, M, "#ff9cc8");
+  },
+});
+
+/* 14 — Orbit: tilted elliptical orbit around a sun-button */
+const ORBIT_STARS = Array.from({ length: 46 }, (_, k) => {
+  const a = (k * 2.399) % TAU, d = Math.sqrt(((k * 7919) % 97) / 97);
+  return { x: Math.cos(a) * d * 222, y: Math.sin(a) * d * 132, r: 0.6 + ((k * 13) % 7) / 6, ph: k * 0.7 };
+});
+VARIANTS.push({
+  key: "orbit", group: "around", name: "Орбита",
+  desc: "Умения-планеты на наклонной орбите вокруг кнопки-солнца. Эллипс экономит высоту экрана, дальние планеты меньше, поэтому орбита выглядит объёмной.",
+  tags: ["эллипс вокруг кнопки", "космос", "глубина"],
+  dim: 0.4,
+  L: { type: "ellipse", rx: 184, ry: 104, R: 184, slot: 46, start: -Math.PI / 2, anchor: "trigger", tb: 136, ext: 172, wExt: 216, hit: [36, 150], openMs: 540, closeMs: 180 },
+  pal: { "Космос": "#0d1433", "Орбита": "#a0c8ff", "Солнце": "#ffb347", "Текст": "#d6ecff" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 70 + 10 * pu, "#ffb347", 0.4 + 0.3 * pu);
+    ctx.save(); ctx.scale(p, p);
+    ctx.save(); ctx.rotate(T.time * 0.5); ctx.strokeStyle = "rgba(255,210,120,.7)"; ctx.lineWidth = 2; ctx.lineCap = "round";
+    for (let k = 0; k < 16; k++) { ctx.rotate(TAU / 16); ctx.beginPath(); ctx.moveTo(0, -33); ctx.lineTo(0, k % 2 ? -38 : -42); ctx.stroke(); }
+    ctx.restore();
+    const g = ctx.createRadialGradient(-7, -8, 2, 0, 0, 32); g.addColorStop(0, "#fff6d0"); g.addColorStop(0.5, "#ffc04a"); g.addColorStop(1, "#e0731a");
+    circle(ctx, 0, 0, 30); ctx.fillStyle = g; ctx.fill();
+    wheelGlyph(ctx, "#7a3a06", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#ffd27a", 44);
+  },
+  draw(ctx, M) {
+    const L = M.L, t = M.t, cl = M.closing, e0 = cl ? 1 : ease.outCubic(M.raw);
+    ctx.save(); ctx.globalAlpha = t;
+    ctx.save(); ctx.scale(1, L.ry / L.rx);
+    const g = ctx.createRadialGradient(0, 0, 20, 0, 0, L.rx + 50);
+    g.addColorStop(0, "rgba(30,44,104,.8)"); g.addColorStop(0.75, "rgba(13,20,51,.72)"); g.addColorStop(1, "rgba(13,20,51,0)");
+    circle(ctx, 0, 0, L.rx + 50); ctx.fillStyle = g; ctx.fill();
+    ctx.restore();
+    ORBIT_STARS.forEach((s) => { circle(ctx, s.x, s.y, s.r); ctx.fillStyle = `rgba(220,235,255,${0.25 + 0.5 * (0.5 + 0.5 * Math.sin(M.time * 2 + s.ph))})`; ctx.fill(); });
+    ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(160,200,255,.5)";
+    ctx.beginPath(); ctx.ellipse(0, 0, L.rx, L.ry, 0, -Math.PI / 2, -Math.PI / 2 + TAU * e0); ctx.stroke();
+    ctx.setLineDash([2, 6]); ctx.strokeStyle = "rgba(160,200,255,.28)";
+    ctx.beginPath(); ctx.ellipse(0, 0, L.rx * 0.6, L.ry * 0.6, 0, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, 0, L.rx * 1.18, L.ry * 1.18, 0, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    glow(ctx, 0, 0, 92, "#ffb347", 0.5);
+    if (M.hover >= 0) {
+      const tp = M.par[M.hover];
+      ctx.beginPath(); ctx.ellipse(0, 0, L.rx, L.ry, 0, tp - 0.32, tp + 0.32); ctx.lineWidth = 3; ctx.strokeStyle = `rgba(214,236,255,${0.9 * M.hoverT[M.hover]})`; ctx.stroke();
+    }
+    ctx.restore();
+    const order = M.order.slice().sort((a, b) => (a === M.hover) - (b === M.hover) || M.pos[a].y - M.pos[b].y);
+    for (const i of order) {
+      const p = M.stag(i, 0.5), e = cl ? 1 : ease.outCubic(p), h = M.hoverT[i];
+      const tp = M.par[i] - (1 - e) * 1.4, rs = 0.3 + 0.7 * e;
+      const x = Math.cos(tp) * L.rx * rs + M.shk[i], y = Math.sin(tp) * L.ry * rs;
+      const depth = 0.84 + 0.16 * ((Math.sin(tp) + 1) / 2), sz = 46 * depth * (1 + 0.22 * h) * (0.4 + 0.6 * e);
+      ctx.save(); ctx.globalAlpha = clamp(p * 2, 0, 1) * (cl ? t : 1);
+      glow(ctx, x, y, sz * 0.95, SKILLS[i].color, 0.25 + 0.5 * h);
+      drawIcon(ctx, i, x, y, sz);
+      const d = Math.hypot(x, y) || 1, sx = -x / d, sy = -y / d;
+      ctx.save(); circle(ctx, x, y, sz / 2); ctx.clip();
+      const sg = ctx.createLinearGradient(x + (sx * sz) / 2, y + (sy * sz) / 2, x - (sx * sz) / 2, y - (sy * sz) / 2);
+      sg.addColorStop(0, "rgba(0,0,0,0)"); sg.addColorStop(0.55, "rgba(0,0,0,.06)"); sg.addColorStop(1, "rgba(2,4,16,.62)");
+      ctx.fillStyle = sg; ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz); ctx.restore();
+      drawCooldown(ctx, M, i, x, y, sz);
+      circle(ctx, x, y, sz / 2); ctx.lineWidth = 1 + 1.5 * h; ctx.strokeStyle = h > 0.5 ? "#d6ecff" : "rgba(160,200,255,.5)"; ctx.stroke();
+      if (h > 0.05) { const ma = M.time * 2.4; circle(ctx, x + Math.cos(ma) * sz * 0.78, y + Math.sin(ma) * sz * 0.3, 3.2); ctx.fillStyle = `rgba(230,240,255,${h})`; ctx.fill(); }
+      ctx.restore();
+    }
+    aroundLabel(ctx, M, -(L.ry + 24 + 28), { bg: "rgba(13,20,51,.92)", border: "rgba(160,200,255,.55)", color: "#d6ecff", idle: "#9fb8d8" });
+    drawKnob(ctx, M, "#a0c8ff");
+  },
+});
+
+/* 15 — Viking shield: the button is the iron boss, sectors are painted planks */
+VARIANTS.push({
+  key: "shield", group: "around", name: "Щит викинга",
+  desc: "Кнопка — железный умбон, вокруг раскрывается круглый щит. Каждое умение нарисовано на своём секторе, выбранный сектор светлеет и выдвигается.",
+  tags: ["щит вокруг кнопки", "дерево и железо", "сектора"],
+  dim: 0.3,
+  L: { type: "ring", R: 86, slot: 40, start: -Math.PI / 2, anchor: "trigger", tb: 146, ext: 180, wExt: 140, hit: [36, 146], rIn: 38, rOut: 124, openMs: 380, closeMs: 170 },
+  pal: { "Красный": "#9e2b25", "Кость": "#e3d3b2", "Железо": "#4a4440", "Текст": "#f3e2c0" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 8 * pu, "#f3b45a", 0.25 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    const g = ctx.createRadialGradient(-9, -11, 2, 0, 0, 34); g.addColorStop(0, "#c9c3bc"); g.addColorStop(0.5, "#7a736d"); g.addColorStop(1, "#2e2a27");
+    circle(ctx, 0, 0, 31); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#24201d"; ctx.stroke();
+    for (let k = 0; k < 8; k++) { const a = (k * TAU) / 8; circle(ctx, Math.cos(a) * 26, Math.sin(a) * 26, 1.8); ctx.fillStyle = "#d8d0c8"; ctx.fill(); }
+    wheelGlyph(ctx, "#f3e2c0", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#f3c26a", 40);
+  },
+  draw(ctx, M) {
+    const L = M.L, t = M.t, cl = M.closing, step = TAU / N;
+    const e = cl ? 1 : ease.outBack(M.raw, 1.6), sc = cl ? 0.9 + 0.1 * t : Math.max(0.05, e);
+    ctx.save(); ctx.globalAlpha = t; ctx.rotate((1 - Math.min(e, 1)) * -0.5); ctx.scale(sc, sc);
+    circle(ctx, 3, 6, 134); ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fill();
+    for (const i of M.order) {
+      const h = M.hoverT[i], a = M.ang[i];
+      ctx.save(); ctx.translate(Math.cos(a) * 6 * h + M.shk[i], Math.sin(a) * 6 * h);
+      sectorPath(ctx, L.rIn, L.rOut, a - step / 2, a + step / 2, 0.6);
+      ctx.fillStyle = i % 2 ? "#e3d3b2" : "#9e2b25"; ctx.fill();
+      ctx.save(); ctx.clip();
+      ctx.strokeStyle = i % 2 ? "rgba(120,90,50,.22)" : "rgba(40,8,6,.25)"; ctx.lineWidth = 1;
+      for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(0, 0, 48 + k * 13 + ((i * 7) % 5), a - step / 2, a + step / 2); ctx.stroke(); }
+      if (h > 0.01) { ctx.fillStyle = `rgba(255,236,190,${0.3 * h})`; ctx.fillRect(-140, -140, 280, 280); }
+      if (M.any > 0 && h < 1) { ctx.fillStyle = `rgba(10,6,4,${0.3 * M.any * (1 - h)})`; ctx.fillRect(-140, -140, 280, 280); }
+      ctx.restore();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(30,18,10,.8)"; ctx.stroke();
+      const ix = Math.cos(a) * L.R, iy = Math.sin(a) * L.R, sz = 40 * (1 + 0.14 * h);
+      circle(ctx, ix, iy, sz / 2 + 2.5); ctx.fillStyle = "rgba(24,14,8,.88)"; ctx.fill();
+      drawIcon(ctx, i, ix, iy, sz);
+      drawCooldown(ctx, M, i, ix, iy, sz);
+      circle(ctx, ix, iy, sz / 2 + 1); ctx.lineWidth = 1.5 + h; ctx.strokeStyle = h > 0.5 ? "#f3c26a" : "#2a1a10"; ctx.stroke();
+      ctx.restore();
+    }
+    circle(ctx, 0, 0, L.rOut + 5); ctx.lineWidth = 10; ctx.strokeStyle = "#4a4440"; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, L.rOut + 8, Math.PI * 1.05, Math.PI * 1.6); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(220,210,200,.35)"; ctx.stroke();
+    for (let k = 0; k < 20; k++) { const a = (k * TAU) / 20 + step / 4; circle(ctx, Math.cos(a) * (L.rOut + 5), Math.sin(a) * (L.rOut + 5), 2.4); ctx.fillStyle = "#9a918a"; ctx.fill(); }
+    circle(ctx, 0, 0, L.rIn); ctx.lineWidth = 4; ctx.strokeStyle = "#3a3532"; ctx.stroke();
+    if (M.hover >= 0) {
+      const a = M.ang[M.hover], s2 = Math.cos(a + Math.PI / 2) * 8, c2 = Math.sin(a + Math.PI / 2) * 8;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * (L.rOut + 4), Math.sin(a) * (L.rOut + 4));
+      ctx.lineTo(Math.cos(a) * (L.rOut + 18) + s2, Math.sin(a) * (L.rOut + 18) + c2); ctx.lineTo(Math.cos(a) * (L.rOut + 18) - s2, Math.sin(a) * (L.rOut + 18) - c2); ctx.closePath();
+      ctx.fillStyle = `rgba(243,194,106,${M.hoverT[M.hover]})`; ctx.fill();
+    }
+    ctx.restore();
+    aroundLabel(ctx, M, -(L.rOut + 44), { bg: "rgba(59,42,28,.95)", border: "#c9a46a", color: "#f3e2c0", idle: "#cdb58f" });
+    drawKnob(ctx, M, "#f3c26a");
+  },
+});
+
+/* 16 — Stained glass: rose window around the button */
+VARIANTS.push({
+  key: "glass", group: "around", name: "Витраж",
+  desc: "Кнопка — центр розы-витража, вокруг десять стеклянных окон в свинцовых переплётах. Выбранное стекло загорается светом, остальные темнеют.",
+  tags: ["витраж вокруг кнопки", "стекло", "свет"],
+  dim: 0.42,
+  L: { type: "ring", R: 90, slot: 38, start: -Math.PI / 2, anchor: "trigger", tb: 150, ext: 188, wExt: 150, hit: [36, 150], openMs: 480, closeMs: 170 },
+  pal: { "Свинец": "#1d1b19", "Камень": "#6f6a62", "Стекло": "цвет умения" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 8 * pu, "#fff1c8", 0.28 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    circle(ctx, 0, 0, 31); ctx.fillStyle = "#1d1b19"; ctx.fill();
+    for (let k = 0; k < 6; k++) {
+      const a = -Math.PI / 2 + (k * TAU) / 6;
+      sectorPath(ctx, 9, 28, a - Math.PI / 6, a + Math.PI / 6, 1.6);
+      ctx.fillStyle = rgba(SKILLS[(k * 3) % N].color, 0.85); ctx.fill();
+    }
+    circle(ctx, 0, 0, 8); ctx.fillStyle = "#fff1c8"; ctx.fill();
+    circle(ctx, 0, 0, 30); ctx.lineWidth = 2; ctx.strokeStyle = "#6f6a62"; ctx.stroke();
+    crossGlyph(ctx, "#ffffff", T.open);
+    ctx.restore(); holdRing(ctx, T, "#fff1c8", 40);
+  },
+  draw(ctx, M) {
+    const t = M.t, cl = M.closing, step = TAU / N, sweepA = cl ? TAU + 1 : (TAU + 1) * ease.inOutSine(clamp(M.raw / 0.85, 0, 1));
+    ctx.save(); ctx.globalAlpha = t;
+    circle(ctx, 0, 0, 140); ctx.fillStyle = "rgba(16,14,20,.62)"; ctx.fill();
+    circle(ctx, 0, 0, 136); ctx.lineWidth = 9; ctx.strokeStyle = "#6f6a62"; ctx.stroke();
+    circle(ctx, 0, 0, 131); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(255,250,240,.3)"; ctx.stroke();
+    ctx.restore();
+    for (const i of M.order) {
+      const a = M.ang[i], h = M.hoverT[i], col = SKILLS[i].color, appear = clamp((sweepA - wrapPos(a + Math.PI / 2)) / 0.6, 0, 1);
+      ctx.save(); ctx.globalAlpha = t * appear; ctx.translate(M.shk[i], 0); ctx.rotate(a);
+      lancetPath(ctx, 44, 128, step);
+      const g = ctx.createRadialGradient(90, 0, 4, 90, 0, 62);
+      g.addColorStop(0, rgba(col, 0.78 + 0.22 * h)); g.addColorStop(1, mix(col, "#101018", 0.55, 0.9));
+      ctx.fillStyle = g; ctx.fill();
+      if (M.any > 0 && h < 1) { ctx.fillStyle = `rgba(12,10,20,${0.5 * M.any * (1 - h)})`; ctx.fill(); }
+      ctx.lineWidth = 3; ctx.strokeStyle = "#1d1b19"; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(50, 0); ctx.lineTo(68, 0); ctx.moveTo(112, 0); ctx.lineTo(124, 0); ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      if (h > 0.01) { ctx.save(); ctx.globalAlpha = t; glow(ctx, Math.cos(a) * 90, Math.sin(a) * 90, 84, col, 0.75 * h); ctx.restore(); }
+      const ix = Math.cos(a) * 90 + M.shk[i], iy = Math.sin(a) * 90, sz = 38 * (1 + 0.16 * h);
+      ctx.save(); ctx.globalAlpha = t * appear;
+      circle(ctx, ix, iy, sz / 2 + 3); ctx.fillStyle = "#1d1b19"; ctx.fill();
+      drawIcon(ctx, i, ix, iy, sz, "circle", 0.85 + 0.15 * h);
+      drawCooldown(ctx, M, i, ix, iy, sz);
+      ctx.restore();
+    }
+    ctx.save(); ctx.globalAlpha = t;
+    for (let i = 0; i < N; i++) {
+      const a = M.ang[i] + step / 2;
+      circle(ctx, Math.cos(a) * 124, Math.sin(a) * 124, 7); ctx.fillStyle = "rgba(255,196,90,.78)"; ctx.fill(); ctx.lineWidth = 2.2; ctx.strokeStyle = "#1d1b19"; ctx.stroke();
+    }
+    circle(ctx, 0, 0, 40); ctx.lineWidth = 4; ctx.strokeStyle = "#1d1b19"; ctx.stroke();
+    if (!cl && M.raw < 1) {
+      const sa = -Math.PI / 2 + sweepA;
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 136, sa - 0.4, sa); ctx.closePath();
+      ctx.fillStyle = "rgba(255,250,230,.22)"; ctx.fill(); ctx.restore();
+    }
+    ctx.restore();
+    const on = M.hover >= 0;
+    aroundLabel(ctx, M, -170, { bg: "rgba(29,27,25,.95)", border: on ? SKILLS[M.hover].color : "#6f6a62", color: on ? SKILLS[M.hover].color : "#e8e2d6", idle: "#b9b2a6" });
+    drawKnob(ctx, M, "#fff1c8");
+  },
+});
+
+/* 17 — Gears: a big brass gear clicks into place around a small gear-button */
+VARIANTS.push({
+  key: "gears", group: "around", name: "Шестерни",
+  desc: "Кнопка — маленькая шестерня, вокруг неё с щелчком проворачивается большая. Умения сидят в гнёздах колеса, выбранное подсвечивается янтарём.",
+  tags: ["шестерня вокруг кнопки", "латунь", "механика"],
+  dim: 0.34,
+  L: { type: "ring", R: 104, slot: 40, start: -Math.PI / 2, anchor: "trigger", tb: 150, ext: 194, wExt: 196, hit: [36, 150], openMs: 560, closeMs: 180 },
+  pal: { "Латунь": "#c9963f", "Тёмная латунь": "#6e4a1c", "Гнездо": "#2a1d10", "Янтарь": "#ffb347" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 8 * pu, "#ffb347", 0.25 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    gearPath(ctx, 28, 35, 10, T.time * 0.6); ctx.fillStyle = brass(ctx, 35); ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#4a3210"; ctx.stroke();
+    circle(ctx, 0, 0, 22); ctx.fillStyle = "#2a1d10"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#6e4a1c"; ctx.stroke();
+    wheelGlyph(ctx, "#ffd38a", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#ffb347", 42);
+  },
+  draw(ctx, M) {
+    const t = M.t, cl = M.closing, step = TAU / N, rot = cl ? 0 : (1 - ease.outBack(M.raw, 2.2)) * -0.63;
+    ctx.save(); ctx.globalAlpha = t;
+    ctx.save(); ctx.translate(Math.cos(-2.36) * 164, Math.sin(-2.36) * 164); ctx.rotate(-rot * 4.4 - 0.3);
+    gearPath(ctx, 18, 26, 9, 0); ctx.fillStyle = brass(ctx, 26); ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = "#4a3210"; ctx.stroke();
+    circle(ctx, 0, 0, 6); ctx.fillStyle = "#2a1d10"; ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.rotate(rot);
+    gearPath(ctx, 128, 138, 40, 0); ctx.arc(0, 0, 80, 0, TAU, true);
+    ctx.fillStyle = brass(ctx, 138); ctx.fill("evenodd"); ctx.lineWidth = 1.5; ctx.strokeStyle = "#4a3210"; ctx.stroke();
+    for (let k = 0; k < 5; k++) {
+      const a = -Math.PI / 2 + step / 2 + k * 2 * step;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 44, Math.sin(a) * 44); ctx.lineTo(Math.cos(a) * 82, Math.sin(a) * 82);
+      ctx.lineWidth = 10; ctx.strokeStyle = "#a87a30"; ctx.stroke(); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(74,50,16,.8)"; ctx.stroke();
+    }
+    circle(ctx, 0, 0, 44); ctx.lineWidth = 8; ctx.strokeStyle = "#b8893a"; ctx.stroke();
+    for (let i = 0; i < N; i++) {
+      const a = M.ang[i];
+      circle(ctx, Math.cos(a) * 104, Math.sin(a) * 104, 23); ctx.fillStyle = "#2a1d10"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#6e4a1c"; ctx.stroke();
+    }
+    ctx.restore();
+    ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.4), h = M.hoverT[i], a = M.ang[i] + rot;
+      const x = Math.cos(a) * 104 + M.shk[i], y = Math.sin(a) * 104, sz = 38 * (1 + 0.16 * h) * (0.5 + 0.5 * ease.outCubic(p));
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.8, 0, 1) * (cl ? t : 1);
+      if (h > 0.01) glow(ctx, x, y, 44, "#ffb347", 0.9 * h);
+      drawIcon(ctx, i, x, y, sz);
+      drawCooldown(ctx, M, i, x, y, sz);
+      circle(ctx, x, y, sz / 2 + 1); ctx.lineWidth = 2; ctx.strokeStyle = mix("#6e4a1c", "#ffb347", h); ctx.stroke();
+      ctx.restore();
+    }
+    if (M.hover >= 0) {
+      const a = M.ang[M.hover] + rot, s2 = Math.cos(a + Math.PI / 2) * 7, c2 = Math.sin(a + Math.PI / 2) * 7;
+      ctx.save(); ctx.globalAlpha = t * M.hoverT[M.hover];
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 140, Math.sin(a) * 140); ctx.lineTo(Math.cos(a) * 156 + s2, Math.sin(a) * 156 + c2); ctx.lineTo(Math.cos(a) * 156 - s2, Math.sin(a) * 156 - c2); ctx.closePath();
+      ctx.fillStyle = "#ffb347"; ctx.fill(); ctx.restore();
+    }
+    aroundLabel(ctx, M, -(138 + 44), { bg: "rgba(42,29,16,.95)", border: "#c9963f", color: "#ffd38a", idle: "#c9a46a" });
+    drawKnob(ctx, M, "#ffb347");
+  },
+});
+
+/* 18 — Bubbles: two tiers, near ring for the main four skills */
+const BUBBLE_PTS = [
+  ...[202.5, 247.5, 292.5, 337.5].map((d) => ({ x: Math.cos((d * Math.PI) / 180) * 96, y: Math.sin((d * Math.PI) / 180) * 96 })),
+  ...[195, 225, 255, 285, 315, 345].map((d) => ({ x: Math.cos((d * Math.PI) / 180) * 172, y: Math.sin((d * Math.PI) / 180) * 172 })),
+];
+VARIANTS.push({
+  key: "bubbles", group: "around", name: "Пузыри",
+  desc: "Два ряда пузырей всплывают из кнопки: четыре главных умения рядом, шесть остальных дальше. Ближний ряд — короткое движение пальца, дальний — длинное.",
+  tags: ["два ряда", "вода", "ближний и дальний"],
+  dim: 0.28,
+  L: { type: "tiers", pts: BUBBLE_PTS, R: 172, slot: 50, anchor: "trigger", tb: 50, ext: 250, wExt: 206, tapR: 34, hit: [38, 230], openMs: 460, closeMs: 170 },
+  pal: { "Вода": "#1b6f8f", "Блик": "#d8f6ff", "Обводка": "#9fe8ff" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 8 * pu, "#7fdcff", 0.25 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    const g = ctx.createRadialGradient(-8, -10, 2, 0, 0, 34); g.addColorStop(0, "rgba(220,250,255,.95)"); g.addColorStop(0.5, "rgba(80,190,230,.85)"); g.addColorStop(1, "rgba(20,90,130,.95)");
+    circle(ctx, 0, 0, 31); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(230,250,255,.9)"; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, 25, Math.PI * 1.1, Math.PI * 1.45); ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.stroke();
+    wheelGlyph(ctx, "#0d3a50", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#9fe8ff", 40);
+  },
+  update(M, dt) {
+    const vs = M.vs; vs.bub = vs.bub || []; vs.bacc = (vs.bacc || 0) + dt * 10 * M.t;
+    while (vs.bacc > 1) {
+      vs.bacc -= 1;
+      vs.bub.push({ x: (Math.random() - 0.5) * 50, y: -24, vy: -30 - Math.random() * 50, r: 1.5 + Math.random() * 3, ph: Math.random() * 6, life: 0, max: 1.5 + Math.random() * 1.5 });
+    }
+    for (let k = vs.bub.length - 1; k >= 0; k--) { const b = vs.bub[k]; b.life += dt; b.y += b.vy * dt; if (b.life > b.max) vs.bub.splice(k, 1); }
+  },
+  draw(ctx, M) {
+    const t = M.t, cl = M.closing;
+    (M.vs.bub || []).forEach((b) => {
+      circle(ctx, b.x + Math.sin(M.time * 3 + b.ph) * 3, b.y, b.r);
+      ctx.lineWidth = 1; ctx.strokeStyle = `rgba(200,245,255,${0.6 * (1 - b.life / b.max) * t})`; ctx.stroke();
+    });
+    for (const i of M.order) {
+      const outer = i >= 4, p = M.stag(i, 0.5, outer ? 0.45 + (i - 4) / 11 : i / 10), e = cl ? 1 : ease.outBack(p, 1.7), h = M.hoverT[i], q = M.pos[i];
+      const x = q.x * e + M.shk[i], y = q.y * e + Math.sin(M.time * 2 + i * 1.3) * 2.5;
+      const sz = (outer ? 48 : 54) * (0.5 + 0.5 * Math.min(e, 1)) * (1 + 0.2 * h) * (1 + 0.02 * Math.sin(M.time * 3 + i));
+      ctx.save(); ctx.globalAlpha = clamp(p * 2, 0, 1) * (cl ? t : 1);
+      glow(ctx, x, y, sz, "#7fdcff", 0.2 + 0.5 * h);
+      circle(ctx, x, y, sz / 2); ctx.fillStyle = h > 0.01 ? mix("#1b6f8f", SKILLS[i].color, 0.3 * h, 0.5) : "rgba(27,111,143,.38)"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz * 0.74, "circle", 0.92);
+      drawCooldown(ctx, M, i, x, y, sz * 0.74);
+      circle(ctx, x, y, sz / 2); ctx.lineWidth = 1.4 + 1.2 * h; ctx.strokeStyle = h > 0.5 ? "#e8fbff" : "rgba(159,232,255,.8)"; ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, sz / 2 - 4, Math.PI * 1.1, Math.PI * 1.5); ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,255,255,.75)"; ctx.stroke();
+      circle(ctx, x + sz * 0.22, y + sz * 0.22, 2); ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.fill();
+      ctx.restore();
+    }
+    aroundLabel(ctx, M, -(172 + 26 + 32), { bg: "rgba(10,40,56,.92)", border: "rgba(159,232,255,.6)", color: "#e8fbff", idle: "#a9d8e8" });
+    drawKnob(ctx, M, "#9fe8ff");
+  },
+});
+
+/* 19 — Ink ensō: one brush stroke around the button, red seal marks the choice */
+VARIANTS.push({
+  key: "ink", group: "around", name: "Тушь",
+  desc: "Кисть одним движением рисует круг-энсо вокруг кнопки, умения ложатся на мазок. Выбор отмечается красной печатью-ханко.",
+  tags: ["энсо 300°", "тушь", "печать"],
+  dim: 0.22,
+  L: { type: "gauge", R: 112, slot: 42, start: (Math.PI * 2) / 3, sweep: (Math.PI * 5) / 3, anchor: "trigger", tb: 132, ext: 182, wExt: 170, tol: 0.25, hit: [36, 160], openMs: 560, closeMs: 170 },
+  pal: { "Тушь": "#1a1714", "Бумага": "#f4eee0", "Печать": "#c8321e" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 56 + 8 * pu, "#ff6a4a", 0.18 + 0.25 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    wobblePath(ctx, 0, 0, 31, 36, 0.05, 2); ctx.fillStyle = "#1a1714"; ctx.fill();
+    circle(ctx, 14, -14, 5); ctx.fillStyle = "#c8321e"; ctx.fill();
+    wheelGlyph(ctx, "#f4eee0", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#c8321e", 40);
+  },
+  draw(ctx, M) {
+    const L = M.L, t = M.t, cl = M.closing, q = cl ? 1 : ease.inOutSine(clamp(M.raw / 0.8, 0, 1)), R = L.R;
+    const a0 = L.start - 0.18, full = L.sweep + 0.36, span = full * q;
+    ctx.save(); ctx.globalAlpha = t * 0.94;
+    wobblePath(ctx, 0, 0, 150, 48, 0.012, 1); ctx.fillStyle = "rgba(244,238,224,.9)"; ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = t;
+    if (span > 0.02) {
+      const n = 72;
+      ctx.beginPath();
+      for (let k = 0; k <= n; k++) {
+        const u = k / n, a = a0 + span * u, w = (14 + 4 * Math.sin(u * 9 + 1)) * Math.min(1, (u * full) / 0.2) * Math.pow(1 - Math.pow(u * q, 3), 0.7) + 1;
+        const x = Math.cos(a) * (R + w / 2), y = Math.sin(a) * (R + w / 2);
+        k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      for (let k = n; k >= 0; k--) {
+        const u = k / n, a = a0 + span * u, w = (14 + 4 * Math.sin(u * 9 + 1)) * Math.min(1, (u * full) / 0.2) * Math.pow(1 - Math.pow(u * q, 3), 0.7) + 1;
+        ctx.lineTo(Math.cos(a) * (R - w / 2), Math.sin(a) * (R - w / 2));
+      }
+      ctx.closePath(); ctx.fillStyle = "#1a1714"; ctx.fill();
+      ctx.setLineDash([18, 7, 5, 9]); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(26,23,20,.55)";
+      [-12, 10, 14].forEach((o) => { ctx.beginPath(); ctx.arc(0, 0, R + o, a0 + 0.12, a0 + span * 0.92); ctx.stroke(); });
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+    for (const i of M.order) {
+      const a = M.ang[i], appear = clamp((span - (a - a0)) / 0.3, 0, 1), h = M.hoverT[i];
+      if (appear <= 0) continue;
+      const x = Math.cos(a) * R + M.shk[i], y = Math.sin(a) * R, sz = 42 * (1 + 0.18 * h) * (0.7 + 0.3 * appear);
+      ctx.save(); ctx.globalAlpha = appear * (cl ? t : 1);
+      circle(ctx, x, y, sz / 2 + 4); ctx.fillStyle = "#f4eee0"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz);
+      drawCooldown(ctx, M, i, x, y, sz);
+      circle(ctx, x, y, sz / 2 + 1); ctx.lineWidth = 2.5; ctx.strokeStyle = "#1a1714"; ctx.stroke();
+      if (h > 0.01) {
+        const sx = Math.cos(a) * (R - 40), sy = Math.sin(a) * (R - 40), s = 22 * (0.6 + 0.4 * h);
+        ctx.save(); ctx.globalAlpha *= h; ctx.translate(sx, sy); ctx.rotate(-0.12);
+        ctx.beginPath(); rrectPath(ctx, -s / 2, -s / 2, s, s, 3); ctx.fillStyle = "#c8321e"; ctx.fill();
+        ctx.beginPath(); rrectPath(ctx, -s / 2 + 3, -s / 2 + 3, s - 6, s - 6, 2); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,240,230,.85)"; ctx.stroke();
+        ctx.font = `400 ${Math.round(s * 0.55)}px ${FONT.display}`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff4ec"; ctx.fillText(String((i + 1) % 10), 0, 1);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+    aroundLabel(ctx, M, -(R + 21 + 32), { bg: "rgba(244,238,224,.96)", border: "#1a1714", color: "#1a1714", idle: "#5a534a", family: FONT.display, weight: 400, size: 16 });
+    drawKnob(ctx, M, "#c8321e");
+  },
+});
+
+/* 20 — Clean: flat white circles, staggered on two radii over the button */
+VARIANTS.push({
+  key: "clean", group: "around", name: "Минимал",
+  desc: "Чистый мобильный стиль: белые кружки в шахматном порядке на двух радиусах над кнопкой. У каждого умения свой угол, так что выбор по-прежнему одним движением.",
+  tags: ["полукруг, два ряда", "flat", "мобильный"],
+  dim: 0.42,
+  thumbHover: 4,
+  L: { type: "arc", R: 104, R2: 166, slot: 46, start: Math.PI + Math.PI / 20, sweep: Math.PI * 0.9, anchor: "trigger", tb: 50, ext: 236, wExt: 200, tol: 0.4, hit: [36, 214], openMs: 380, closeMs: 160 },
+  pal: { "Кружок": "#ffffff", "Акцент": "#3d7bfd", "Текст": "#1d2433" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 54 + 8 * pu, "#7fa8ff", 0.18 + 0.22 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    circle(ctx, 0, 4, 33); ctx.fillStyle = "rgba(0,0,0,.22)"; ctx.fill();
+    circle(ctx, 0, 0, 31); ctx.fillStyle = "#ffffff"; ctx.fill();
+    ctx.save(); ctx.rotate((T.open * Math.PI) / 4); ctx.lineCap = "round"; ctx.lineWidth = 4.5; ctx.strokeStyle = "#3d7bfd";
+    ctx.beginPath(); ctx.moveTo(-11, 0); ctx.lineTo(11, 0); ctx.moveTo(0, -11); ctx.lineTo(0, 11); ctx.stroke(); ctx.restore();
+    ctx.restore(); holdRing(ctx, T, "#3d7bfd", 40);
+  },
+  draw(ctx, M) {
+    const L = M.L, t = M.t, cl = M.closing;
+    ctx.save(); ctx.globalAlpha = t * 0.6; ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,255,255,.35)";
+    [L.R, L.R2].forEach((r) => { ctx.beginPath(); ctx.arc(0, 0, r, L.start - 0.12, L.start + L.sweep + 0.12); ctx.stroke(); });
+    ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.5, (i % 2 ? 0.5 : 0) + i / 20), e = cl ? 1 : ease.outBack(p, 2.2), h = M.hoverT[i], q = M.pos[i];
+      const x = q.x * e + M.shk[i], y = q.y * e, sz = 46 * (1 + 0.18 * h) * (0.4 + 0.6 * Math.min(e, 1));
+      ctx.save(); ctx.globalAlpha = clamp(p * 2, 0, 1) * (cl ? t : 1) * (1 - 0.25 * M.any * (1 - h));
+      circle(ctx, x, y + 4, sz / 2 + 3); ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.fill();
+      circle(ctx, x, y, sz / 2 + 3); ctx.fillStyle = "rgba(255,255,255,.96)"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz - 4);
+      drawCooldown(ctx, M, i, x, y, sz - 4);
+      if (h > 0.01) { circle(ctx, x, y, sz / 2 + 4.5); ctx.lineWidth = 3; ctx.strokeStyle = rgba("#3d7bfd", h); ctx.stroke(); }
+      ctx.restore();
+    }
+    aroundLabel(ctx, M, -(L.R2 + 23 + 32), { bg: "rgba(255,255,255,.97)", border: "rgba(29,36,51,.12)", color: "#1d2433", idle: "#4a5468" });
+    drawKnob(ctx, M, "#3d7bfd");
+  },
+});
 /* ============ app: settings, live stage, gesture state machine ============ */
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const store = {
@@ -1380,7 +2076,7 @@ const store = {
   set(k, v) { try { localStorage.setItem("radial." + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
 };
 const settings = Object.assign({ hold: 0, dead: 26, size: 100, bg: "game", keep: false, debug: false }, store.get("settings", {}));
-let vIndex = clamp(store.get("variant", 0) | 0, 0, VARIANTS.length - 1);
+let vIndex = clamp(store.get("variant2", 10) | 0, 0, VARIANTS.length - 1);
 
 const stageEl = document.getElementById("stage"), cv = document.getElementById("cv"), ctx = cv.getContext("2d");
 const ms = makeMenuState(), fx = [], cdEnd = new Float64Array(N);
@@ -1433,10 +2129,15 @@ function closeMenu(now) {
 }
 function local(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function stickyZone(p) {
-  const v = view || curView(), L = curV().L, x = (p.x - v.c.x) / v.s, y = (p.y - v.c.y) / v.s, d = Math.hypot(x, y);
+  const v = view || curView(), L = curV().L, q = { x: (p.x - v.c.x) / v.s, y: (p.y - v.c.y) / v.s }, d = bandDist(L, q);
+  if (L.type === "tiers") {
+    const i = pickSlot(L, q);
+    if (Math.hypot(q.x - L.pts[i].x, q.y - L.pts[i].y) <= L.tapR) return { kind: "slot", i };
+    return { kind: d < L.hit[0] ? "center" : "outside" };
+  }
   if (d < L.hit[0]) return { kind: "center" };
   if (d > L.hit[1]) return { kind: "outside" };
-  const i = pickByAngle(L, Math.atan2(y, x));
+  const i = pickSlot(L, q);
   return i < 0 ? { kind: "outside" } : { kind: "slot", i };
 }
 function targetPos(self) {
@@ -1496,7 +2197,7 @@ cv.addEventListener("pointermove", (e) => {
     const dx = (p.x - ms.p0.x) / v.s, dy = (p.y - ms.p0.y) / v.s;
     ms.cursor = { x: dx, y: dy };
     let hv = -1;
-    if (Math.hypot(dx, dy) >= settings.dead) { ms.leftDead = true; hv = pickByAngle(curV().L, Math.atan2(dy, dx)); }
+    if (Math.hypot(dx, dy) >= settings.dead) { ms.leftDead = true; hv = pickSlot(curV().L, { x: dx, y: dy }); }
     if (hv !== ms.hover) { ms.hover = hv; if (hv >= 0) buzz(6); }
   } else if (ms.mode === "sticky" && ms.stickyDrag) {
     const z = stickyZone(p), hv = z.kind === "slot" ? z.i : -1;
@@ -1557,11 +2258,11 @@ function tick(now) {
 /* ============ variant switching, settings, fullscreen ============ */
 const vnameEl = document.getElementById("vname");
 function setVariant(k, opts = {}) {
-  vIndex = (k + VARIANTS.length) % VARIANTS.length; store.set("variant", vIndex);
+  vIndex = (k + VARIANTS.length) % VARIANTS.length; store.set("variant2", vIndex);
   ms.mode = "closed"; ms.raw = 0; ms.hover = -1; ms.hoverT.fill(0); ms.vs = {}; ms.pid = null; ms.cursor = null; ms.castIndex = -1;
   const n = document.createElement("span"); n.textContent = `${vIndex + 1}/${VARIANTS.length}`;
   vnameEl.replaceChildren(n, VARIANTS[vIndex].name);
-  document.querySelectorAll(".card").forEach((c, j) => c.setAttribute("aria-pressed", String(j === vIndex)));
+  document.querySelectorAll(".card").forEach((c) => c.setAttribute("aria-pressed", String(+c.dataset.k === vIndex)));
   renderParams();
   view = curView();
   if (opts.scroll) stageEl.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
@@ -1630,9 +2331,10 @@ document.addEventListener("keydown", (e) => {
 
 /* ============ gallery thumbnails ============ */
 const cardsEl = document.getElementById("cards");
+const cardsAroundEl = document.getElementById("cards-around");
 VARIANTS.forEach((Vv, k) => {
   const b = document.createElement("button");
-  b.type = "button"; b.className = "card"; b.id = "card-" + Vv.key; b.setAttribute("aria-pressed", "false");
+  b.type = "button"; b.className = "card"; b.id = "card-" + Vv.key; b.dataset.k = k; b.setAttribute("aria-pressed", "false");
   const c = document.createElement("canvas"); c.setAttribute("aria-hidden", "true");
   const h = document.createElement("h3"), n = document.createElement("span");
   n.className = "n"; n.textContent = String(k + 1).padStart(2, "0"); h.append(n, Vv.name);
@@ -1641,7 +2343,7 @@ VARIANTS.forEach((Vv, k) => {
   Vv.tags.forEach((t) => { const s = document.createElement("span"); s.className = "tag"; s.textContent = t; tg.append(s); });
   b.append(c, h, p, tg);
   b.addEventListener("click", () => setVariant(k, { scroll: true, preview: true }));
-  cardsEl.append(b);
+  (Vv.group === "around" ? cardsAroundEl : cardsEl).append(b);
 });
 function drawBackground(g, w, h) {
   if (settings.bg === "game" && bgImg.complete && bgImg.naturalWidth) {
@@ -1654,7 +2356,8 @@ function drawBackground(g, w, h) {
   }
 }
 function renderThumbs() {
-  document.querySelectorAll(".card canvas").forEach((c, k) => {
+  document.querySelectorAll(".card canvas").forEach((c) => {
+    const k = +c.parentElement.dataset.k;
     const r = c.getBoundingClientRect();
     if (!r.width) return;
     const d = Math.min(window.devicePixelRatio || 1, 2), w = r.width, h = r.height;
@@ -1683,8 +2386,11 @@ function gdPreset(Vv) {
     `\t"anchor": "${L.anchor}",  # above = над кнопкой, trigger = вокруг кнопки`,
     `\t"radius": ${gdNum(L.R)},`,
     L.R2 ? `\t"radius_outer": ${gdNum(L.R2)},` : null,
+    L.rx ? `\t"ellipse": Vector2(${gdNum(L.rx)}, ${gdNum(L.ry)}),` : null,
+    L.pts ? `\t"points": [${L.pts.map((q) => `Vector2(${gdNum(+q.x.toFixed(1))}, ${gdNum(+q.y.toFixed(1))})`).join(", ")}],` : null,
+    `\t"trigger_bottom": ${gdNum(L.tb ?? 50)},`,
     `\t"slot_size": ${gdNum(L.slot)},`,
-    `\t"start_deg": ${gdNum(deg(L.start))},`,
+    L.start !== undefined ? `\t"start_deg": ${gdNum(deg(L.start))},` : null,
     L.sweep ? `\t"sweep_deg": ${gdNum(deg(L.sweep))},` : null,
     L.lift ? `\t"lift": ${gdNum(L.lift)},` : null,
     `\t"hit_band": Vector2(${gdNum(L.hit[0])}, ${gdNum(L.hit[1])}),`,
@@ -1700,12 +2406,13 @@ function gdPreset(Vv) {
 function renderParams() {
   const Vv = curV(), L = Vv.L, el = document.getElementById("params");
   const rows = [
-    ["Раскладка", { ring: "кольцо", arc: "дуга-веер", star: "звезда, два радиуса", gauge: "шкала" }[L.type]],
+    ["Раскладка", { ring: "кольцо", arc: L.R2 ? "дуга, два радиуса" : "дуга", star: "звезда, два радиуса", gauge: "шкала", ellipse: "эллипс-орбита", tiers: "два ряда: 4 + 6" }[L.type]],
     ["Центр меню", L.anchor === "trigger" ? "в самой кнопке" : `над кнопкой, на ${L.lift ?? 44 + (L.lowExt ?? L.ext)} выше`],
-    ["Радиус ячеек", L.type === "star" ? `${L.R} / ${L.R2}` : `${L.R}`],
+    ["Кнопка от низа экрана", `${L.tb ?? 50}`],
+    ["Радиус ячеек", L.type === "ellipse" ? `${L.rx} × ${L.ry}` : L.type === "tiers" ? "96 / 172" : L.R2 ? `${L.R} / ${L.R2}` : `${L.R}`],
     ["Размер ячейки", `${L.slot}`],
-    ["Сектор на умение", L.sweep ? `${(L.sweep / (N - 1) * 180 / Math.PI).toFixed(1)}°` : "36°"],
-    ["Первая ячейка", `${deg(L.start)}°`],
+    ["Выбор", L.type === "tiers" ? "ближайшая ячейка к пальцу" : L.sweep ? `по направлению, ${(L.sweep / (N - 1) * 180 / Math.PI).toFixed(1)}° на умение` : "по направлению, 36° на умение"],
+    L.type === "tiers" ? null : ["Первая ячейка", `${deg(L.start)}°`],
     L.sweep ? ["Охват", `${deg(L.sweep)}°`] : null,
     ["Зона тапа, радиусы", `${L.hit[0]}–${L.hit[1]}`],
     ["Открытие / закрытие", `${L.openMs} / ${L.closeMs} мс`],
