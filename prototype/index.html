@@ -1,0 +1,1757 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<title>Радиальное меню скиллов</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;700&family=Forum&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  /* Layout: game-UI workbench — live stage first, the ten variants as a gallery, Godot notes last */
+  --bg:#111316;
+  --panel:#191c20;
+  --panel-2:#20242a;
+  --line:#2c3138;
+  --text:#ebe4d6;
+  --muted:#9c968b;
+  --bronze:#c4965a;
+  --bronze-hi:#efcd8c;
+  --ink-on-bronze:#1d150b;
+  --display:"Forum","Cormorant Garamond",Georgia,serif;
+  --ui:"Golos Text","Segoe UI",Roboto,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--text);font:15px/1.55 var(--ui);-webkit-text-size-adjust:100%}
+body.noscroll{overflow:hidden}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:26px}
+.eyebrow{margin:0 0 6px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--bronze)}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,4.4vw,46px);line-height:1.05;margin:0;text-wrap:balance;letter-spacing:.01em}
+h2{font-family:var(--display);font-weight:400;font-size:clamp(24px,3vw,32px);margin:0;text-wrap:balance}
+h3{margin:0}
+.lede{max-width:70ch;margin:10px 0 0;color:var(--muted)}
+.lede b{color:var(--text);font-weight:600}
+.gestures{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.gestures li{display:flex;gap:8px;align-items:center;padding:6px 12px 6px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--muted)}
+.gestures b{color:var(--text);font-weight:600}
+.gestures i{width:22px;height:22px;border-radius:50%;flex:none;border:2px solid var(--bronze);position:relative}
+.gestures i::after{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--bronze)}
+.gestures .hold::before{content:"";position:absolute;left:50%;top:-8px;width:2px;height:9px;background:var(--bronze-hi);transform:translateX(-50%)}
+.gestures .cancel{border-style:dashed}
+.gestures .cancel::after{background:transparent;border:2px solid var(--bronze)}
+
+.stage-wrap{display:grid;gap:12px}
+.stage{position:relative;width:100%;max-width:100%;aspect-ratio:20/9;max-height:min(78vh,660px);min-height:290px;border-radius:14px;overflow:hidden;background:#0c0e11;border:1px solid var(--line);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;outline:none}
+.stage .bg{position:absolute;inset:0;background:#0c0e11 url(game-bg.jpg) center bottom/cover no-repeat}
+.stage.dark .bg{background:radial-gradient(120% 90% at 50% 100%,#2b3039 0%,#15181d 55%,#0b0d10 100%)}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.stage.full{position:fixed;inset:0;width:100%;height:100%;max-height:none;min-height:0;aspect-ratio:auto;border-radius:0;border:0;z-index:100}
+@media (max-width:640px){.stage{aspect-ratio:auto;height:min(74vh,580px)}}
+.hud-top{position:absolute;left:50%;top:calc(8px + var(--it,0px));transform:translateX(-50%);display:flex;gap:4px;align-items:center;padding:3px;border-radius:999px;background:rgba(10,11,13,.74);border:1px solid rgba(255,255,255,.14);z-index:2;max-width:calc(100% - 120px)}
+.hud-top .vname{font-family:var(--display);font-size:16px;min-width:0;padding:0 6px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud-top .vname span{font-family:var(--mono);font-size:11px;color:var(--bronze);margin-right:6px}
+.icon-btn{width:34px;height:34px;flex:none;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:var(--text);font:600 16px/1 var(--ui);cursor:pointer;display:grid;place-items:center;padding:0}
+.icon-btn:hover{background:rgba(255,255,255,.14)}
+.hud-fs{position:absolute;right:calc(10px + var(--ir,0px));top:calc(8px + var(--it,0px));z-index:2;background:rgba(10,11,13,.74)}
+.chat{position:absolute;left:calc(10px + var(--il,0px));bottom:calc(10px + var(--ib,0px));width:min(44%,330px);display:grid;gap:3px;pointer-events:none;font:12px/1.35 var(--ui);z-index:1}
+.chat p{margin:0;padding:3px 8px;background:rgba(0,0,0,.5);border-radius:6px;color:#e6f0ff;text-shadow:0 1px 0 #000;transition:opacity .8s}
+.chat p.out{opacity:0}
+.chat .k{color:#ffd77a}
+.rotate{display:none;position:absolute;left:50%;top:calc(52px + var(--it,0px));transform:translateX(-50%);z-index:2;padding:6px 12px;border-radius:999px;background:rgba(10,11,13,.8);font-size:12px;white-space:nowrap;pointer-events:none}
+@media (orientation:portrait){.stage.full .rotate{display:block}}
+
+.controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.ctl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.ctl output{font-family:var(--mono);font-size:12px;color:var(--text);min-width:3.6em}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;color:var(--text);border:0;border-left:1px solid var(--line);padding:6px 10px;font:500 13px var(--ui);cursor:pointer}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--bronze);color:var(--ink-on-bronze)}
+input[type=range]{accent-color:var(--bronze);width:110px}
+input[type=checkbox]{accent-color:var(--bronze);width:16px;height:16px}
+.btn{border:1px solid var(--bronze);background:transparent;color:var(--bronze-hi);border-radius:8px;padding:7px 12px;font:600 13px var(--ui);cursor:pointer}
+.btn:hover{background:rgba(196,150,90,.12)}
+:focus-visible{outline:2px solid var(--bronze-hi);outline-offset:2px}
+
+.sec-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:12px}
+.sec-head p{margin:0;color:var(--muted);font-size:14px}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (min-width:1000px){.cards{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.card{display:grid;gap:8px;align-content:start;padding:8px 8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;cursor:pointer;text-align:left;color:inherit;font:inherit;min-width:0}
+.card:hover{border-color:#4a4f57}
+.card canvas{width:100%;max-width:100%;aspect-ratio:16/11;border-radius:8px;display:block;background:#0c0e11}
+.card[aria-pressed="true"]{border-color:var(--bronze);box-shadow:inset 0 0 0 1px var(--bronze)}
+.card h3{font-family:var(--display);font-weight:400;font-size:19px;line-height:1.15;display:flex;gap:8px;align-items:baseline;padding:0 4px}
+.card h3 .n{font-family:var(--mono);font-size:12px;color:var(--bronze)}
+.card p{margin:0;padding:0 4px;font-size:13px;color:var(--muted);line-height:1.4}
+.tags{display:flex;flex-wrap:wrap;gap:4px;padding:0 4px}
+.tag{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+
+.port{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+@media (min-width:900px){.port{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0;display:grid;gap:12px;align-content:start}
+.panel h3{font-family:var(--display);font-weight:400;font-size:21px}
+.panel p,.panel li{color:var(--muted);font-size:14px;margin:0}
+.panel ol,.panel ul{margin:0;padding-left:20px;display:grid;gap:6px}
+.panel b,.panel code{color:var(--text)}
+code{font-family:var(--mono);font-size:.9em}
+table.params{width:100%;border-collapse:collapse;font-size:13px}
+.params td{padding:5px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.params td:first-child{color:var(--muted);padding-right:12px}
+.params td:last-child{font-family:var(--mono);font-size:12.5px;text-align:right;overflow-wrap:anywhere}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:6px;border:1px solid rgba(255,255,255,.25)}
+pre{margin:0;tab-size:4;background:#0c0e11;border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font:12px/1.55 var(--mono);color:#d7dee6;max-height:380px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.note{font-size:13px;color:var(--muted)}
+.map{width:100%;border-collapse:collapse;font-size:13px}
+.map th{font-weight:600;text-align:left;color:var(--text);padding:6px 10px 6px 0;border-bottom:1px solid var(--line)}
+.map td{padding:6px 10px 6px 0;border-bottom:1px solid var(--line);color:var(--muted);vertical-align:top}
+.map td code{color:#e7d3a8}
+.scroll-x{overflow-x:auto}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Прототип HUD · 10 стилей · под Godot 4</p>
+    <h1>Радиальное меню скиллов</h1>
+    <p class="lede">Вместо панели быстрого доступа внизу — одна светящаяся кнопка. <b>Нажмите</b> на неё, и меню останется открытым: выберите умение касанием. <b>Зажмите и ведите палец</b> в сторону умения, затем отпустите — оно применится без лишних нажатий.</p>
+    <ul class="gestures" aria-label="Жесты">
+      <li><i></i><span><b>Касание</b> — меню открыто, выбор тапом</span></li>
+      <li><i class="hold"></i><span><b>Удержание + движение</b> — выбор направлением, отпустить = применить</span></li>
+      <li><i class="cancel"></i><span><b>Вернуть палец в центр</b> и отпустить — отмена</span></li>
+    </ul>
+  </header>
+
+  <section class="stage-wrap" aria-label="Живой прототип">
+    <div id="stage" class="stage" tabindex="0" aria-label="Игровой экран с кнопкой радиального меню">
+      <div class="bg"></div>
+      <canvas id="cv"></canvas>
+      <div class="hud-top">
+        <button class="icon-btn" id="prev" type="button" aria-label="Предыдущий вариант">‹</button>
+        <div class="vname" id="vname" aria-live="polite"></div>
+        <button class="icon-btn" id="next" type="button" aria-label="Следующий вариант">›</button>
+      </div>
+      <button class="icon-btn hud-fs" id="fs" type="button" aria-label="Во весь экран" title="Во весь экран">⤢</button>
+      <div class="chat" id="chat" aria-live="polite"></div>
+      <div class="rotate">Поверните телефон горизонтально</div>
+    </div>
+
+    <div class="controls" id="controls">
+      <div class="ctl"><span>Показ меню при удержании</span>
+        <div class="seg" id="hold" role="group" aria-label="Задержка удержания">
+          <button type="button" data-v="0" id="hold0">сразу</button>
+          <button type="button" data-v="150" id="hold150">0,15 с</button>
+          <button type="button" data-v="300" id="hold300">0,3 с</button>
+        </div>
+      </div>
+      <label class="ctl" for="dead">Мёртвая зона <input type="range" id="dead" min="12" max="60" step="2"><output id="deadOut"></output></label>
+      <label class="ctl" for="size">Размер <input type="range" id="size" min="70" max="140" step="5"><output id="sizeOut"></output></label>
+      <div class="ctl"><span>Фон</span>
+        <div class="seg" id="bgSeg" role="group" aria-label="Фон">
+          <button type="button" data-v="game" id="bgGame">игра</button>
+          <button type="button" data-v="dark" id="bgDark">тёмный</button>
+        </div>
+      </div>
+      <label class="ctl" for="keep"><input type="checkbox" id="keep"> Не закрывать после выбора</label>
+      <label class="ctl" for="debug"><input type="checkbox" id="debug"> Показать зоны</label>
+    </div>
+  </section>
+
+  <section aria-labelledby="gal-h">
+    <div class="sec-head">
+      <h2 id="gal-h">Десять вариантов</h2>
+      <p>Нажмите на карточку, чтобы попробовать вариант на экране выше.</p>
+    </div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section aria-labelledby="port-h">
+    <div class="sec-head">
+      <h2 id="port-h">Перенос в Godot</h2>
+      <p>Каждый стиль нарисован примитивами, которые есть в <code>CanvasItem</code> Godot 4.</p>
+    </div>
+    <div class="port">
+      <div class="panel" id="params"></div>
+      <div class="panel">
+        <h3>Как устроено управление</h3>
+        <ol>
+          <li><b>Нажатие на кнопку</b> запоминает точку касания <code>p0</code>. Меню появляется сразу или после задержки удержания.</li>
+          <li><b>Движение пальца</b> — это вектор <code>p − p0</code>, как у виртуального стика. Если он длиннее мёртвой зоны, умение выбирается по углу вектора. Поэтому кольцо может стоять где угодно, а не только вокруг пальца.</li>
+          <li><b>Отпускание</b>: выбрано умение — применить и закрыть. Палец не выходил из мёртвой зоны — это касание, меню остаётся открытым. Палец вернулся в центр — отмена.</li>
+          <li><b>Открытое меню</b>: тап по ячейке применяет умение, тап по центру или мимо кольца закрывает меню.</li>
+        </ol>
+        <pre id="gdMath"></pre>
+        <div class="scroll-x">
+          <table class="map">
+            <thead><tr><th>В прототипе</th><th>В Godot 4</th></tr></thead>
+            <tbody>
+              <tr><td>ctx.translate + ctx.scale</td><td><code>draw_set_transform(center, 0, Vector2(s, s))</code></td></tr>
+              <tr><td>кольца, дуги</td><td><code>draw_arc()</code>, <code>draw_circle()</code></td></tr>
+              <tr><td>сектор, гекс, ромб</td><td><code>draw_colored_polygon()</code></td></tr>
+              <tr><td>иконка, обрезанная по форме</td><td><code>draw_colored_polygon(points, Color.WHITE, uvs, texture)</code></td></tr>
+              <tr><td>свечение</td><td><code>GradientTexture2D</code> (fill = Radial) + <code>CanvasItemMaterial</code> blend Add</td></tr>
+              <tr><td>перезарядка</td><td>сектор-полигон или <code>TextureProgressBar</code> (Clockwise)</td></tr>
+              <tr><td>подписи</td><td><code>draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_CENTER, width, size)</code></td></tr>
+              <tr><td>pointer events</td><td><code>InputEventScreenTouch</code> / <code>InputEventScreenDrag</code></td></tr>
+              <tr><td>вибрация</td><td><code>Input.vibrate_handheld(10)</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* ============ skills & procedural placeholder icons ============ */
+const TAU = Math.PI * 2;
+const N = 10;
+const SKILLS = [
+  { name: "Молния",          mp: 24, cd: 4,  color: "#ffe24d", glyph: "bolt",   self: false },
+  { name: "Огненный шар",    mp: 36, cd: 6,  color: "#ff7a2b", glyph: "fire",   self: false },
+  { name: "Ледяное копьё",   mp: 30, cd: 5,  color: "#62d6ff", glyph: "ice",    self: false },
+  { name: "Исцеление",       mp: 40, cd: 8,  color: "#72f08f", glyph: "heal",   self: true  },
+  { name: "Щит веры",        mp: 28, cd: 12, color: "#ffd27a", glyph: "shield", self: true  },
+  { name: "Вихрь",           mp: 22, cd: 5,  color: "#6ff5d2", glyph: "wind",   self: false },
+  { name: "Ядовитое облако", mp: 34, cd: 7,  color: "#b77bff", glyph: "poison", self: false },
+  { name: "Метеор",          mp: 60, cd: 15, color: "#ff5236", glyph: "meteor", self: false },
+  { name: "Святой свет",     mp: 45, cd: 9,  color: "#fff1b3", glyph: "holy",   self: true  },
+  { name: "Теневой удар",    mp: 26, cd: 4,  color: "#a184ff", glyph: "shadow", self: false },
+];
+
+function makeIcon(sk, S = 128) {
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d");
+  const u = S / 100;
+  g.scale(u, u);
+  const bg = (c0, c1, c2) => {
+    const gr = g.createRadialGradient(40, 34, 4, 50, 50, 78);
+    gr.addColorStop(0, c0); gr.addColorStop(0.45, c1); gr.addColorStop(1, c2);
+    g.fillStyle = gr; g.fillRect(0, 0, 100, 100);
+  };
+  const poly = (pts) => { g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); };
+  const lin = (x0, y0, x1, y1, stops) => { const gr = g.createLinearGradient(x0, y0, x1, y1); stops.forEach((s, k) => gr.addColorStop(k / (stops.length - 1), s)); return gr; };
+  const rad = (x, y, r, stops) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); stops.forEach((s, k) => gr.addColorStop(k / (stops.length - 1), s)); return gr; };
+  const dot = (x, y, r, f) => { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fillStyle = f; g.fill(); };
+  const star4 = (x, y, r, f) => { poly([[x, y - r], [x + r * 0.25, y - r * 0.25], [x + r, y], [x + r * 0.25, y + r * 0.25], [x, y + r], [x - r * 0.25, y + r * 0.25], [x - r, y], [x - r * 0.25, y - r * 0.25]]); g.fillStyle = f; g.fill(); };
+  const glowOn = (col, b) => { g.shadowColor = col; g.shadowBlur = b * u; };
+  const glowOff = () => { g.shadowBlur = 0; g.shadowColor = "transparent"; };
+
+  switch (sk.glyph) {
+    case "bolt": {
+      bg("#e4ff8a", "#4f8f1c", "#0b2007");
+      g.save(); g.translate(50, 50); g.globalCompositeOperation = "lighter";
+      for (let k = 0; k < 12; k++) { g.rotate(TAU / 12); poly([[0, -3], [62, 0], [0, 3]]); g.fillStyle = "rgba(255,255,170,0.16)"; g.fill(); }
+      g.restore();
+      poly([[58, 6], [26, 54], [46, 54], [36, 94], [76, 40], [55, 40], [68, 6]]);
+      glowOn("#fff27a", 16); g.fillStyle = lin(0, 6, 0, 94, ["#ffffff", "#fff36b", "#ffb81c"]); g.fill(); glowOff();
+      g.lineWidth = 2; g.strokeStyle = "rgba(110,60,0,.85)"; g.stroke();
+      break;
+    }
+    case "fire": {
+      bg("#ff9b3d", "#8a1d07", "#1e0302");
+      g.beginPath(); g.moveTo(66, 40); g.quadraticCurveTo(34, 30, 10, 8); g.quadraticCurveTo(34, 52, 44, 76); g.closePath();
+      g.fillStyle = lin(60, 62, 10, 8, ["rgba(255,210,90,.95)", "rgba(255,110,20,.55)", "rgba(255,60,0,0)"]); g.fill();
+      glowOn("#ff8a2a", 18); dot(60, 62, 27, rad(56, 58, 30, ["#fffbe0", "#ffd25a", "#ff6a1a", "rgba(200,30,0,.9)"])); glowOff();
+      dot(26, 70, 2.4, "#ffd27a"); dot(80, 30, 1.8, "#ffd27a"); dot(84, 78, 2.2, "#ffb347");
+      break;
+    }
+    case "ice": {
+      bg("#c4f6ff", "#1b6fa8", "#04122a");
+      dot(50, 50, 40, rad(50, 50, 40, ["rgba(255,255,255,.35)", "rgba(255,255,255,0)"]));
+      const shard = (x, y, len, w, rot) => {
+        g.save(); g.translate(x, y); g.rotate(rot);
+        poly([[0, -len / 2], [w / 2, 0], [0, len / 2], [-w / 2, 0]]);
+        g.fillStyle = lin(-w / 2, 0, w / 2, 0, ["#2a8ad0", "#bff1ff", "#ffffff", "#7fd8ff"]); g.fill();
+        g.lineWidth = 1; g.strokeStyle = "rgba(255,255,255,.75)"; g.stroke();
+        g.beginPath(); g.moveTo(0, -len / 2); g.lineTo(0, len / 2); g.strokeStyle = "rgba(255,255,255,.55)"; g.stroke();
+        g.restore();
+      };
+      glowOn("#9be8ff", 10);
+      shard(33, 58, 56, 14, -0.5); shard(67, 58, 56, 14, 0.5); shard(50, 50, 86, 20, 0);
+      glowOff();
+      break;
+    }
+    case "heal": {
+      bg("#bfffd0", "#1f8a4a", "#03200f");
+      dot(50, 50, 42, rad(50, 50, 42, ["rgba(210,255,220,.6)", "rgba(210,255,220,0)"]));
+      g.beginPath();
+      const rr = (x, y, w, h, r) => { g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+      rr(16, 39, 68, 22, 6); rr(39, 16, 22, 68, 6);
+      glowOn("#7dffa0", 14); g.fillStyle = lin(0, 16, 0, 84, ["#ffffff", "#c2ffd2", "#3ccf74"]); g.fill(); glowOff();
+      star4(20, 22, 7, "#ffffff"); star4(81, 25, 5, "#e8fff0"); star4(79, 79, 7, "#ffffff"); star4(23, 80, 4, "#e8fff0");
+      break;
+    }
+    case "shield": {
+      bg("#ffe7a8", "#9a6a1e", "#261404");
+      const sh = (k) => { g.beginPath(); g.moveTo(50 - 29 * k, 50 - 33 * k); g.lineTo(50 + 29 * k, 50 - 33 * k); g.quadraticCurveTo(50 + 31 * k, 50 + 8 * k, 50, 50 + 40 * k); g.quadraticCurveTo(50 - 31 * k, 50 + 8 * k, 50 - 29 * k, 50 - 33 * k); g.closePath(); };
+      sh(1); glowOn("#ffd27a", 12); g.fillStyle = lin(21, 17, 79, 90, ["#fff3c4", "#f0c25a", "#a8701e"]); g.fill(); glowOff();
+      g.lineWidth = 3; g.strokeStyle = "#4a2c06"; g.stroke();
+      sh(0.8); g.lineWidth = 1.5; g.strokeStyle = "rgba(255,255,255,.6)"; g.stroke();
+      g.fillStyle = "#8a2414"; g.fillRect(46, 28, 8, 42); g.fillRect(35, 38, 30, 8);
+      g.strokeStyle = "rgba(255,220,180,.6)"; g.lineWidth = 1; g.strokeRect(46, 28, 8, 42);
+      break;
+    }
+    case "wind": {
+      bg("#c2fff2", "#178a7a", "#03201d");
+      g.lineCap = "round"; glowOn("#b6fff0", 8);
+      for (let k = 0; k < 3; k++) {
+        g.beginPath(); g.arc(50 + k * 2, 50 - k * 2, 34 - k * 9, k * 0.9, k * 0.9 + 4.3);
+        g.lineWidth = 8 - k * 2; g.strokeStyle = `rgba(232,255,248,${0.95 - k * 0.15})`; g.stroke();
+      }
+      glowOff();
+      g.beginPath(); g.moveTo(10, 78); g.quadraticCurveTo(30, 70, 44, 82); g.lineWidth = 3; g.strokeStyle = "rgba(200,255,240,.7)"; g.stroke();
+      g.save(); g.translate(76, 26); g.rotate(0.7); g.beginPath(); g.ellipse(0, 0, 7, 3.2, 0, 0, TAU); g.fillStyle = "#8dffb0"; g.fill(); g.restore();
+      g.save(); g.translate(22, 30); g.rotate(-0.5); g.beginPath(); g.ellipse(0, 0, 5, 2.4, 0, 0, TAU); g.fillStyle = "#b9ffd0"; g.fill(); g.restore();
+      break;
+    }
+    case "poison": {
+      bg("#e4baff", "#5a2a8a", "#11051d");
+      g.beginPath(); g.moveTo(50, 12); g.bezierCurveTo(64, 34, 75, 50, 75, 63); g.arc(50, 63, 25, 0, Math.PI); g.bezierCurveTo(25, 50, 36, 34, 50, 12); g.closePath();
+      glowOn("#b6ff5a", 14); g.fillStyle = lin(50, 12, 50, 88, ["#e2ff9a", "#7ad13a", "#2f6e14"]); g.fill(); glowOff();
+      g.lineWidth = 2; g.strokeStyle = "#173806"; g.stroke();
+      g.save(); g.translate(41, 62); g.rotate(0.3); g.beginPath(); g.ellipse(0, 0, 4.5, 9, 0, 0, TAU); g.fillStyle = "rgba(255,255,255,.5)"; g.fill(); g.restore();
+      [[22, 28, 7], [79, 30, 5], [81, 74, 8], [19, 74, 5]].forEach(([x, y, r]) => { dot(x, y, r, rad(x - r * 0.3, y - r * 0.3, r * 1.3, ["#f4dcff", "#9b4fe0", "rgba(90,30,150,.8)"])); dot(x - r * 0.35, y - r * 0.35, r * 0.28, "rgba(255,255,255,.8)"); });
+      break;
+    }
+    case "meteor": {
+      bg("#ffb36b", "#6e1b0c", "#120403");
+      [[18, 70], [30, 86], [80, 18], [88, 40], [70, 88]].forEach(([x, y]) => dot(x, y, 1.2, "rgba(255,240,220,.8)"));
+      poly([[58, 46], [6, 6], [48, 60]]);
+      g.fillStyle = lin(62, 62, 6, 6, ["rgba(255,240,180,.95)", "rgba(255,120,30,.6)", "rgba(255,60,0,0)"]); g.fill();
+      glowOn("#ff7a2a", 18); dot(64, 64, 18, rad(58, 58, 24, ["#ffd08c", "#c4561c", "#5a1a08"])); glowOff();
+      dot(68, 60, 3.4, "rgba(60,15,5,.45)"); dot(58, 70, 2.6, "rgba(60,15,5,.45)"); dot(70, 72, 2, "rgba(60,15,5,.4)");
+      break;
+    }
+    case "holy": {
+      bg("#fffbe0", "#d6a73a", "#3e2504");
+      g.save(); g.translate(50, 50); g.globalCompositeOperation = "lighter";
+      for (let k = 0; k < 16; k++) { g.rotate(TAU / 16); poly([[0, -4], [k % 2 ? 40 : 58, 0], [0, 4]]); g.fillStyle = "rgba(255,255,225,.45)"; g.fill(); }
+      g.restore();
+      dot(50, 50, 32, rad(50, 50, 32, ["#ffffff", "#fff3b0", "rgba(255,220,120,0)"]));
+      glowOn("#ffffff", 12); star4(50, 50, 20, "#ffffff"); glowOff();
+      break;
+    }
+    case "shadow": {
+      bg("#cdb8ff", "#3a1f78", "#06020e");
+      glowOn("#b48cff", 14);
+      for (let k = 0; k < 3; k++) {
+        const ox = k * 13 - 13, oy = k * 7 - 7;
+        g.beginPath(); g.moveTo(14 + ox, 78 + oy); g.quadraticCurveTo(30 + ox, 30 + oy, 78 + ox, 18 + oy); g.quadraticCurveTo(40 + ox, 40 + oy, 14 + ox, 78 + oy); g.closePath();
+        g.fillStyle = lin(14, 78, 78, 18, ["#6a3df0", "#c7a6ff", "#ffffff"]); g.fill();
+      }
+      glowOff();
+      break;
+    }
+  }
+  // vignette, gloss, inner border
+  const v = g.createRadialGradient(50, 50, 34, 50, 50, 74);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.55)");
+  g.fillStyle = v; g.fillRect(0, 0, 100, 100);
+  g.fillStyle = lin(0, 0, 0, 50, ["rgba(255,255,255,.16)", "rgba(255,255,255,0)"]); g.fillRect(0, 0, 100, 50);
+  return c;
+}
+const ICONS = SKILLS.map((sk) => makeIcon(sk));
+/* ============ helpers (each maps 1:1 to a Godot CanvasItem call) ============ */
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = {
+  outCubic: (t) => 1 - Math.pow(1 - t, 3),
+  inCubic: (t) => t * t * t,
+  outBack: (t, k = 1.70158) => { const u = t - 1; return 1 + (k + 1) * u * u * u + k * u * u; },
+  inOutSine: (t) => -(Math.cos(Math.PI * t) - 1) / 2,
+};
+const FONT = {
+  display: '"Forum", Georgia, serif',
+  ui: '"Golos Text", system-ui, sans-serif',
+  tech: '"Exo 2", "Golos Text", sans-serif',
+};
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function rgba(h, a) { const [r, g, b] = hexRgb(h); return `rgba(${r},${g},${b},${a})`; }
+function mix(h1, h2, t, a = 1) {
+  const A = hexRgb(h1), B = hexRgb(h2);
+  return `rgba(${Math.round(lerp(A[0], B[0], t))},${Math.round(lerp(A[1], B[1], t))},${Math.round(lerp(A[2], B[2], t))},${a})`;
+}
+const wrapPos = (a) => ((a % TAU) + TAU) % TAU;
+function angDiff(a, b) { let d = wrapPos(a - b); if (d > Math.PI) d -= TAU; return d; }
+
+function circle(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, TAU); }
+function rrectPath(ctx, x, y, w, h, r) {
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function shapePath(ctx, shape, x, y, size) {
+  size = Math.max(0, size);
+  const h = size / 2;
+  ctx.beginPath();
+  if (shape === "circle") ctx.arc(x, y, h, 0, TAU);
+  else if (shape === "diamond") { ctx.moveTo(x, y - h); ctx.lineTo(x + h, y); ctx.lineTo(x, y + h); ctx.lineTo(x - h, y); ctx.closePath(); }
+  else if (shape === "hex") { for (let k = 0; k < 6; k++) { const a = -Math.PI / 2 + k * Math.PI / 3; k ? ctx.lineTo(x + Math.cos(a) * h, y + Math.sin(a) * h) : ctx.moveTo(x + Math.cos(a) * h, y + Math.sin(a) * h); } ctx.closePath(); }
+  else rrectPath(ctx, x - h, y - h, size, size, size * (shape === "rsq" ? 0.2 : 0.1));
+}
+function sectorPath(ctx, r0, r1, a0, a1, gap = 0) {
+  ctx.beginPath();
+  ctx.arc(0, 0, r1, a0 + gap / r1, a1 - gap / r1);
+  ctx.arc(0, 0, r0, a1 - gap / r0, a0 + gap / r0, true);
+  ctx.closePath();
+}
+const glowCache = new Map();
+function glowSprite(col) {
+  let c = glowCache.get(col);
+  if (c) return c;
+  c = document.createElement("canvas"); c.width = c.height = 128;
+  const g = c.getContext("2d"), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, rgba(col, 1)); gr.addColorStop(0.22, rgba(col, 0.55)); gr.addColorStop(0.55, rgba(col, 0.16)); gr.addColorStop(1, rgba(col, 0));
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  glowCache.set(col, c); return c;
+}
+// Godot: draw_texture_rect(radial GradientTexture2D, ...) with an additive CanvasItemMaterial
+function glow(ctx, x, y, r, col, a = 1) {
+  if (a <= 0.004 || r <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha *= Math.min(a, 1);
+  ctx.drawImage(glowSprite(col), x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+// Godot: draw_colored_polygon(shape_points, Color.WHITE, uvs, icon_texture)
+function drawIcon(ctx, i, x, y, size, shape = "circle", alpha = 1) {
+  if (size <= 0.5) return;
+  ctx.save(); shapePath(ctx, shape, x, y, size); ctx.clip(); ctx.globalAlpha *= alpha;
+  ctx.drawImage(ICONS[i], x - size / 2, y - size / 2, size, size); ctx.restore();
+}
+function drawCooldown(ctx, M, i, x, y, size, shape = "circle") {
+  const f = M.cd[i];
+  if (f <= 0 || size <= 0.5) return;
+  ctx.save(); shapePath(ctx, shape, x, y, size); ctx.clip();
+  ctx.fillStyle = "rgba(0,0,0,.62)"; ctx.beginPath(); ctx.moveTo(x, y);
+  ctx.arc(x, y, size, -Math.PI / 2, -Math.PI / 2 + TAU * f); ctx.closePath(); ctx.fill();
+  ctx.font = `700 ${Math.round(size * 0.36)}px ${FONT.ui}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.lineJoin = "round";
+  const t = String(Math.ceil(M.cdLeft[i])); ctx.strokeText(t, x, y + 1); ctx.fillStyle = "#fff"; ctx.fillText(t, x, y + 1);
+  ctx.restore();
+}
+function fitText(ctx, str, x, y, o) {
+  const fam = o.family || FONT.ui, w = o.weight || 600, maxW = o.maxW || 110, min = o.min || 9;
+  if (o.upper) str = str.toUpperCase();
+  let size = o.size || 16, lines = [str];
+  const font = (z) => (ctx.font = `${o.italic ? "italic " : ""}${w} ${z}px ${fam}`);
+  const widest = () => Math.max(...lines.map((l) => ctx.measureText(l).width));
+  font(size);
+  while (size > min && widest() > maxW) font(--size);
+  if (widest() > maxW && str.includes(" ")) {
+    let best = null;
+    [...str].forEach((ch, k) => { if (ch === " " && (best === null || Math.abs(k - str.length / 2) < Math.abs(best - str.length / 2))) best = k; });
+    lines = [str.slice(0, best), str.slice(best + 1)];
+    size = o.size || 16; font(size);
+    while (size > min && widest() > maxW) font(--size);
+  }
+  ctx.textAlign = o.align || "center"; ctx.textBaseline = "middle";
+  const lh = size * 1.12, y0 = y - ((lines.length - 1) * lh) / 2;
+  lines.forEach((ln, k) => {
+    if (o.stroke) { ctx.lineJoin = "round"; ctx.lineWidth = o.strokeW || 3; ctx.strokeStyle = o.stroke; ctx.strokeText(ln, x, y0 + k * lh); }
+    ctx.fillStyle = o.color || "#fff"; ctx.fillText(ln, x, y0 + k * lh);
+  });
+  return { size, n: lines.length, h: lines.length * lh };
+}
+const statLine = (i) => `MP ${SKILLS[i].mp} · ${SKILLS[i].cd} с`;
+// Drag cursor ("virtual stick knob"), drawn in menu space
+function drawKnob(ctx, M, col, r = 6) {
+  if (!M.cursor) return;
+  const k = M.cursor, d = Math.hypot(k.x, k.y);
+  if (d < 2) return;
+  ctx.save();
+  ctx.setLineDash([3, 5]); ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(col, 0.55);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(k.x, k.y); ctx.stroke(); ctx.setLineDash([]);
+  glow(ctx, k.x, k.y, r * 4, col, 0.9);
+  circle(ctx, k.x, k.y, r); ctx.fillStyle = "#fff"; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.stroke();
+  ctx.restore();
+}
+// Ring glyph used inside every trigger; morphs into a close cross while the menu is open
+function wheelGlyph(ctx, col, open, r = 13) {
+  ctx.save();
+  ctx.globalAlpha *= 1 - open;
+  ctx.rotate(open * Math.PI / 4);
+  for (let k = 0; k < 8; k++) { const a = k * TAU / 8 - Math.PI / 2; circle(ctx, Math.cos(a) * r, Math.sin(a) * r, k === 0 ? 3.6 : 2.6); ctx.fillStyle = col; ctx.fill(); }
+  circle(ctx, 0, 0, 4.2); ctx.fill();
+  ctx.restore();
+  crossGlyph(ctx, col, open);
+}
+function crossGlyph(ctx, col, open) {
+  if (open <= 0.01) return;
+  ctx.save(); ctx.globalAlpha *= open; ctx.rotate((1 - open) * -Math.PI / 4);
+  ctx.lineCap = "round"; ctx.lineWidth = 4; ctx.strokeStyle = col;
+  ctx.beginPath(); ctx.moveTo(-9, -9); ctx.lineTo(9, 9); ctx.moveTo(9, -9); ctx.lineTo(-9, 9); ctx.stroke();
+  ctx.restore();
+}
+function holdRing(ctx, T, col, r = 38) {
+  if (T.hold <= 0 || T.hold >= 1) return;
+  ctx.save(); ctx.lineWidth = 3.5; ctx.lineCap = "round"; ctx.strokeStyle = col;
+  ctx.beginPath(); ctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + TAU * T.hold); ctx.stroke(); ctx.restore();
+}
+
+/* ============ layout & selection math ============ */
+function slotAngle(L, i) {
+  return L.type === "ring" || L.type === "star" ? L.start + (i * TAU) / N : L.start + (i * L.sweep) / (N - 1);
+}
+function slotRadius(L, i) { return L.type === "star" && i % 2 ? L.R2 : L.R; }
+function pickByAngle(L, a) {
+  if (L.type === "ring" || L.type === "star") {
+    const step = TAU / N;
+    return Math.round(wrapPos(a - L.start) / step) % N;
+  }
+  const step = L.sweep / (N - 1);
+  const rel = angDiff(a, L.start + L.sweep / 2) + L.sweep / 2;
+  const tol = L.tol ?? step / 2;
+  if (rel < -tol || rel > L.sweep + tol) return -1;
+  return clamp(Math.round(rel / step), 0, N - 1);
+}
+// Scale is relative to a 576-unit tall screen (the reference screenshot), then fitted so the menu stays on screen.
+function computeView(W, H, V, sizeMul, ins, fit = false) {
+  const L = V.L, lift = L.anchor === "trigger" ? 0 : L.lift ?? 32 + 12 + (L.lowExt ?? L.ext);
+  const needW = 2 * (L.wExt ?? L.ext) + 16, needH = 50 + lift + L.ext + 10;
+  const aw = W - ins.l - ins.r, ah = H - ins.t - ins.b;
+  let s = Math.min(fit ? 9 : ah / 576, aw / needW, ah / needH);
+  s = clamp(s, 0.3, 1.7) * sizeMul;
+  const T = { x: ins.l + aw / 2, y: H - ins.b - 50 * s, r: 32 * s };
+  const c = { x: T.x, y: T.y - lift * s };
+  if (L.anchor !== "trigger") c.y = Math.max(c.y, ins.t + L.ext * s + 4);
+  return { W, H, s, T, c };
+}
+
+/* ============ menu state + model ============ */
+function makeMenuState() {
+  return {
+    mode: "closed", openAt: 0, closeAt: 0, raw: 0, hover: -1, hoverT: new Float32Array(N), any: 0,
+    cursor: null, p0: null, pid: null, leftDead: false, fromSticky: false, stickyDrag: false, pressAt: 0,
+    pressed: 0, castIndex: -1, castAt: -1e9, shakeAt: new Float64Array(N).fill(-1e9), vs: {}, how: "",
+  };
+}
+function buildModel(view, V, ms, now, opt) {
+  const L = V.L, closing = ms.mode === "closing";
+  const M = {
+    V, L, s: view.s, c: view.c, raw: ms.raw, t: closing ? ease.inOutSine(ms.raw) : ease.outCubic(ms.raw), closing,
+    mode: ms.mode, sticky: ms.mode === "sticky", drag: ms.mode === "drag", hover: ms.hover, hoverT: ms.hoverT, any: ms.any,
+    time: now / 1000, dt: opt.dt || 1 / 60, dead: opt.dead, vs: ms.vs,
+    trig: { x: (view.T.x - view.c.x) / view.s, y: (view.T.y - view.c.y) / view.s },
+    cursor: null, ang: [], rad: [], cd: [], cdLeft: [], shk: [], order: [],
+    castIndex: ms.castIndex, castK: clamp((now - ms.castAt) / 520, 0, 1),
+  };
+  if (ms.mode === "drag" && ms.cursor) {
+    const k = ms.cursor, d = Math.hypot(k.x, k.y), lim = L.R2 ?? L.R;
+    M.cursor = d > lim ? { x: (k.x / d) * lim, y: (k.y / d) * lim } : { ...k };
+  }
+  for (let i = 0; i < N; i++) {
+    M.ang[i] = slotAngle(L, i); M.rad[i] = slotRadius(L, i);
+    const left = Math.max(0, (opt.cdEnd[i] - now) / 1000);
+    M.cdLeft[i] = left; M.cd[i] = left / SKILLS[i].cd;
+    const st = now - ms.shakeAt[i];
+    M.shk[i] = st < 420 ? Math.sin(st * 0.09) * 6 * (1 - st / 420) : 0;
+    if (i !== ms.hover) M.order.push(i);
+  }
+  if (ms.hover >= 0) M.order.push(ms.hover);
+  M.stag = (i, spread = 0.4, rank) => {
+    if (closing) return ms.raw;
+    const r = rank !== undefined ? rank : i / (N - 1);
+    return clamp((ms.raw - spread * r) / (1 - spread), 0, 1);
+  };
+  return M;
+}
+
+/* ============ scene render (shared by the live stage and the gallery thumbnails) ============ */
+function renderScene(ctx, view, V, ms, now, opt) {
+  const M = buildModel(view, V, ms, now, opt), s = view.s;
+  if (V.update && ms.mode !== "closed") for (let k = 0; k < (opt.presim || 1); k++) V.update(M, opt.presim ? 1 / 30 : M.dt);
+  // dim the game while the menu is open — Godot: a ColorRect behind the menu
+  if (ms.mode !== "closed") { ctx.fillStyle = `rgba(4,6,10,${(V.dim ?? 0.3) * M.t})`; ctx.fillRect(0, 0, view.W, view.H); }
+  if (opt.fx) drawFx(ctx, opt.fx, now, s);
+  const TS = { time: now / 1000, pressed: ms.pressed, hold: opt.hold || 0, open: ms.mode === "closed" ? 0 : M.t, idle: !opt.reduce };
+  ctx.save(); ctx.translate(view.T.x, view.T.y); ctx.scale(s, s); V.trigger(ctx, TS); ctx.restore();
+  if (opt.hint) drawHint(ctx, view, now);
+  if (ms.mode === "closed") return M;
+  ctx.save(); ctx.translate(view.c.x, view.c.y); ctx.scale(s, s);
+  V.draw(ctx, M);
+  if (M.castIndex >= 0 && M.castK < 1) {
+    const i = M.castIndex, a = M.ang[i], r = M.rad[i], k = M.castK, col = SKILLS[i].color;
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    glow(ctx, x, y, 40 + 50 * k, col, 1 - k);
+    circle(ctx, x, y, 24 + 40 * ease.outCubic(k)); ctx.lineWidth = 3 * (1 - k); ctx.strokeStyle = rgba(col, 1 - k); ctx.stroke();
+  }
+  if (opt.debug) drawDebug(ctx, M);
+  ctx.restore();
+  return M;
+}
+function drawDebug(ctx, M) {
+  const L = M.L, band = L.hit;
+  ctx.save(); ctx.lineWidth = 1;
+  circle(ctx, 0, 0, M.dead); ctx.fillStyle = "rgba(255,80,80,.18)"; ctx.fill(); ctx.strokeStyle = "rgba(255,120,120,.9)"; ctx.stroke();
+  circle(ctx, 0, 0, band[0]); ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(120,220,255,.8)"; ctx.stroke();
+  circle(ctx, 0, 0, band[1]); ctx.stroke(); ctx.setLineDash([]);
+  const half = L.type === "ring" || L.type === "star" ? TAU / N / 2 : L.sweep / (N - 1) / 2;
+  for (let i = 0; i < N; i++) {
+    const a = M.ang[i] - half;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a) * M.dead, Math.sin(a) * M.dead); ctx.lineTo(Math.cos(a) * band[1], Math.sin(a) * band[1]);
+    ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.stroke();
+  }
+  if (L.type === "arc" || L.type === "gauge") {
+    const a = M.ang[N - 1] + half;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a) * M.dead, Math.sin(a) * M.dead); ctx.lineTo(Math.cos(a) * band[1], Math.sin(a) * band[1]); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawHint(ctx, view, now) {
+  const s = view.s, b = Math.sin(now / 260) * 4 * s, x = view.T.x, y = view.T.y - view.T.r - 22 * s + b;
+  ctx.save();
+  ctx.font = `600 ${Math.round(13 * s + 2)}px ${FONT.ui}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const txt = "Нажмите или зажмите", w = ctx.measureText(txt).width + 22 * s, h = 26 * s + 2;
+  ctx.beginPath(); rrectPath(ctx, x - w / 2, y - h, w, h, h / 2); ctx.fillStyle = "rgba(10,11,13,.82)"; ctx.fill();
+  ctx.strokeStyle = "rgba(239,205,140,.7)"; ctx.lineWidth = 1; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 6 * s, y); ctx.lineTo(x, y + 7 * s); ctx.lineTo(x + 6 * s, y); ctx.fillStyle = "rgba(10,11,13,.82)"; ctx.fill();
+  ctx.fillStyle = "#f3dfb2"; ctx.fillText(txt, x, y - h / 2 + 1);
+  ctx.restore();
+}
+
+/* ============ cast effects on the game field ============ */
+function spawnFx(list, i, P, now) {
+  const sk = SKILLS[i], parts = [];
+  for (let k = 0; k < 14; k++) { const a = Math.random() * TAU, sp = 60 + Math.random() * 140; parts.push({ vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, r: 1.5 + Math.random() * 2.5 }); }
+  const val = sk.self ? "+" + (150 + Math.round(Math.random() * 120)) : "−" + (90 + Math.round(Math.random() * 170));
+  list.push({ i, x: P.x, y: P.y, t0: now, parts, val });
+}
+function drawFx(ctx, list, now, s) {
+  for (let n = list.length - 1; n >= 0; n--) {
+    const f = list[n], k = (now - f.t0) / 1100;
+    if (k >= 1) { list.splice(n, 1); continue; }
+    const col = SKILLS[f.i].color, e = ease.outCubic(Math.min(1, k * 1.6));
+    glow(ctx, f.x, f.y, (40 + 60 * e) * s, col, 1 - k);
+    circle(ctx, f.x, f.y, (10 + 70 * e) * s); ctx.lineWidth = 4 * (1 - e) * s + 0.5; ctx.strokeStyle = rgba(col, 1 - k); ctx.stroke();
+    const tt = k * 1.1;
+    f.parts.forEach((p) => glow(ctx, f.x + p.vx * tt * s, f.y + (p.vy * tt + 120 * tt * tt) * s, p.r * 4 * s, col, 1 - k));
+    ctx.save(); ctx.globalAlpha = 1 - Math.max(0, k - 0.6) / 0.4;
+    ctx.font = `700 ${Math.round(22 * s + 4)}px ${FONT.ui}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const ty = f.y - (46 + 46 * e) * s;
+    ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.strokeText(f.val, f.x, ty);
+    ctx.fillStyle = SKILLS[f.i].self ? "#8dffa8" : "#ffe9a6"; ctx.fillText(f.val, f.x, ty);
+    ctx.restore();
+  }
+}
+/* ============ variants 1–5 ============ */
+const VARIANTS = [];
+function metalGrad(ctx, x, y, r, stops) {
+  const g = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+  stops.forEach((s, k) => g.addColorStop(k / (stops.length - 1), s));
+  return g;
+}
+const BRONZE = ["#f6d896", "#b07a35", "#5a3a14", "#d6a35c"];
+const GOLD = ["#fff4c8", "#ffd25e", "#c58a1c", "#ffe9a0"];
+const SILVER = ["#ffffff", "#aab0b9", "#4b5059", "#d9dde3"];
+function pulseOf(T) { return T.idle ? 0.5 + 0.5 * Math.sin(T.time * 3) : 0.6; }
+function hotkey(ctx, i, x, y, col = "#f5e04a") {
+  ctx.font = `700 12px ${FONT.ui}`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.9)";
+  const l = String((i + 1) % 10); ctx.strokeText(l, x, y); ctx.fillStyle = col; ctx.fillText(l, x, y);
+}
+function idleText(M) { return M.drag ? "Ведите к умению" : "Выберите умение"; }
+
+/* 1 — Bronze ring: matches the game's metal HUD buttons */
+VARIANTS.push({
+  key: "bronze", name: "Бронзовый круг",
+  desc: "Металлические ячейки с бронзовой окантовкой, как кнопки вашего HUD. Выбранная ячейка золотится, название — на медальоне в центре.",
+  tags: ["кольцо", "круглые ячейки", "как в игре"],
+  L: { type: "ring", R: 142, slot: 58, start: -Math.PI / 2, anchor: "above", ext: 192, hit: [66, 204], openMs: 260, closeMs: 170 },
+  pal: { "Бронза": "#c4965a", "Золото выбора": "#ffcf73", "Подложка": "#14100c", "Текст": "#f6d896" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 8 * pu, "#ffb54a", 0.3 + 0.35 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    const g = ctx.createRadialGradient(-8, -10, 2, 0, 0, 34); g.addColorStop(0, "#3a3029"); g.addColorStop(1, "#120e0b");
+    circle(ctx, 0, 0, 31); ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 6; ctx.strokeStyle = metalGrad(ctx, 0, 0, 32, BRONZE); ctx.stroke();
+    circle(ctx, 0, 0, 27); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.7)"; ctx.stroke();
+    wheelGlyph(ctx, "#f6d896", T.open);
+    ctx.restore(); holdRing(ctx, T, "#ffe3a0", 40);
+  },
+  draw(ctx, M) {
+    const R = 142, t = M.t, bs = M.closing ? 0.9 + 0.1 * t : 0.86 + 0.14 * ease.outBack(M.raw);
+    ctx.save(); ctx.globalAlpha = t; ctx.scale(bs, bs);
+    const g = ctx.createRadialGradient(0, 0, 40, 0, 0, 190);
+    g.addColorStop(0, "rgba(22,17,12,.5)"); g.addColorStop(0.7, "rgba(15,12,9,.74)"); g.addColorStop(1, "rgba(10,8,6,.88)");
+    circle(ctx, 0, 0, 186); ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 5; ctx.strokeStyle = metalGrad(ctx, 0, 0, 186, BRONZE); ctx.stroke();
+    circle(ctx, 0, 0, 181); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.7)"; ctx.stroke();
+    circle(ctx, 0, 0, R); ctx.lineWidth = 12; ctx.strokeStyle = "rgba(0,0,0,.32)"; ctx.stroke();
+    circle(ctx, 0, 0, 84); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(196,150,90,.4)"; ctx.stroke();
+    for (let i = 0; i < N; i++) {
+      const a = M.ang[i] + Math.PI / N;
+      shapePath(ctx, "diamond", Math.cos(a) * R, Math.sin(a) * R, 9); ctx.fillStyle = "#b8894e"; ctx.fill();
+    }
+    if (M.hover >= 0) {
+      ctx.save(); ctx.rotate(M.ang[M.hover]); ctx.globalAlpha *= M.hoverT[M.hover];
+      ctx.beginPath(); ctx.moveTo(175, 0); ctx.lineTo(193, -10); ctx.lineTo(193, 10); ctx.closePath(); ctx.fillStyle = "#ffd98a"; ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.45), e = M.closing ? p : ease.outBack(p), h = M.hoverT[i], a = M.ang[i];
+      const r = R * (0.5 + 0.5 * e) * (M.closing ? 0.9 + 0.1 * p : 1);
+      const x = Math.cos(a) * r + M.shk[i], y = Math.sin(a) * r, sz = 58 * (0.55 + 0.45 * e) * (1 + 0.17 * h);
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.8, 0, 1) * (M.closing ? t : 1);
+      glow(ctx, x, y, sz * 1.1, "#ffc45e", h * 0.85);
+      circle(ctx, x, y, sz / 2 + 1); ctx.fillStyle = "#130f0b"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz * 0.8);
+      drawCooldown(ctx, M, i, x, y, sz * 0.8);
+      circle(ctx, x, y, sz / 2 - 2); ctx.lineWidth = 5; ctx.strokeStyle = metalGrad(ctx, x, y, sz / 2, BRONZE); ctx.stroke();
+      if (h > 0.01) { ctx.globalAlpha *= h; ctx.strokeStyle = metalGrad(ctx, x, y, sz / 2, GOLD); ctx.stroke(); ctx.globalAlpha /= h; }
+      circle(ctx, x, y, sz * 0.4 + 0.5); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.75)"; ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, sz / 2 - 2, Math.PI * 1.08, Math.PI * 1.42); ctx.lineWidth = 1.6; ctx.strokeStyle = "rgba(255,244,214,.55)"; ctx.stroke();
+      hotkey(ctx, i, x - sz * 0.38, y - sz * 0.44);
+      ctx.restore();
+    }
+    ctx.save(); ctx.globalAlpha = t;
+    const cg = ctx.createRadialGradient(0, -14, 6, 0, 0, 62); cg.addColorStop(0, "#2a2118"); cg.addColorStop(1, "#0e0b08");
+    circle(ctx, 0, 0, 60); ctx.fillStyle = cg; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = metalGrad(ctx, 0, 0, 60, BRONZE); ctx.stroke();
+    circle(ctx, 0, 0, 54); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(246,216,150,.25)"; ctx.stroke();
+    if (M.hover >= 0) {
+      const i = M.hover; ctx.globalAlpha = t * (0.35 + 0.65 * M.hoverT[i]);
+      fitText(ctx, SKILLS[i].name, 0, -8, { family: FONT.display, weight: 400, size: 19, min: 12, maxW: 98, color: "#f6d896" });
+      fitText(ctx, statLine(i), 0, 22, { size: 11, weight: 500, color: "#c9b48e", maxW: 98 });
+    } else fitText(ctx, idleText(M), 0, 0, { family: FONT.display, weight: 400, size: 15, maxW: 90, color: "rgba(246,216,150,.72)" });
+    ctx.restore();
+    drawKnob(ctx, M, "#ffd27a");
+  },
+});
+
+/* 2 — Sector wheel: big pie zones, weapon-wheel style */
+VARIANTS.push({
+  key: "sector", name: "Колесо секторов",
+  desc: "Кольцо из десяти секторов, как колесо оружия. Самые крупные зоны попадания: сектор заливается цветом умения и выдвигается наружу.",
+  tags: ["сектора", "крупные зоны", "стекло"],
+  dim: 0.38,
+  L: { type: "ring", R: 124, slot: 46, start: -Math.PI / 2, anchor: "above", ext: 194, hit: [58, 204], rIn: 64, rOut: 184, openMs: 230, closeMs: 150 },
+  pal: { "Сектор": "#0c1016", "Обводка": "#ffffff", "Выбор": "цвет умения" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 8 * pu, "#8fd3ff", 0.22 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    circle(ctx, 0, 0, 31); ctx.fillStyle = "rgba(12,16,22,.88)"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.stroke();
+    ctx.save(); ctx.globalAlpha *= 1 - T.open;
+    for (let k = 0; k < N; k++) {
+      const a = -Math.PI / 2 + (k * TAU) / N;
+      sectorPath(ctx, 10, 21, a - Math.PI / N, a + Math.PI / N, 1.2); ctx.fillStyle = k === 0 ? "#ffffff" : "rgba(255,255,255,.5)"; ctx.fill();
+    }
+    ctx.restore();
+    crossGlyph(ctx, "#ffffff", T.open);
+    ctx.restore(); holdRing(ctx, T, "#bfe6ff", 39);
+  },
+  draw(ctx, M) {
+    const L = M.L, step = TAU / N, rot = M.closing ? 0 : (1 - ease.outCubic(M.raw)) * -0.5;
+    const sc = M.closing ? 0.9 + 0.1 * M.t : 0.8 + 0.2 * ease.outCubic(M.raw);
+    ctx.save(); ctx.scale(sc, sc); ctx.rotate(rot);
+    for (const i of M.order) {
+      const p = M.stag(i, 0.35), h = M.hoverT[i], a = M.ang[i], col = SKILLS[i].color;
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.5, 0, 1) * (M.closing ? M.t : 1);
+      ctx.translate(Math.cos(a) * 10 * h + M.shk[i], Math.sin(a) * 10 * h);
+      const r1 = L.rOut + 8 * h;
+      sectorPath(ctx, L.rIn, r1, a - step / 2, a + step / 2, 2.5);
+      ctx.fillStyle = "rgba(12,16,22,.7)"; ctx.fill();
+      if (h > 0.01) {
+        const g = ctx.createRadialGradient(0, 0, L.rIn, 0, 0, r1);
+        g.addColorStop(0, rgba(col, 0.2 * h)); g.addColorStop(1, rgba(col, 0.85 * h)); ctx.fillStyle = g; ctx.fill();
+      }
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,255,255,.13)"; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, r1 - 2.5, a - step / 2 + 3 / r1, a + step / 2 - 3 / r1);
+      ctx.lineWidth = 4; ctx.strokeStyle = rgba(col, 0.25 + 0.75 * h); ctx.stroke();
+      const ir = L.R + 6 * h, sz = 46 * (1 + 0.12 * h);
+      ctx.translate(Math.cos(a) * ir, Math.sin(a) * ir); ctx.rotate(-rot);
+      drawIcon(ctx, i, 0, 0, sz, "circle", 0.7 + 0.3 * h);
+      drawCooldown(ctx, M, i, 0, 0, sz);
+      circle(ctx, 0, 0, sz / 2); ctx.lineWidth = 1.5; ctx.strokeStyle = h > 0.5 ? "rgba(255,255,255,.95)" : "rgba(0,0,0,.55)"; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = M.t;
+    circle(ctx, 0, 0, 56); ctx.fillStyle = "rgba(8,10,14,.9)"; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,255,255,.15)"; ctx.stroke();
+    if (M.hover >= 0) {
+      const i = M.hover, col = SKILLS[i].color, a = M.ang[i];
+      ctx.beginPath(); ctx.arc(0, 0, 60, a - step / 2 + 0.04, a + step / 2 - 0.04); ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.stroke();
+      fitText(ctx, SKILLS[i].name, 0, -7, { family: FONT.tech, weight: 700, size: 14, min: 9, maxW: 90, upper: true, color: "#ffffff" });
+      fitText(ctx, statLine(i), 0, 21, { size: 11, weight: 600, color: col, maxW: 90 });
+    } else fitText(ctx, M.drag ? "ведите" : "выбор", 0, 0, { family: FONT.tech, weight: 700, size: 13, upper: true, color: "rgba(255,255,255,.6)" });
+    ctx.restore();
+    drawKnob(ctx, M, "#ffffff");
+  },
+});
+
+/* 3 — Fan: arc grows straight out of the button */
+VARIANTS.push({
+  key: "fan", name: "Веер над кнопкой",
+  desc: "Дуга раскрывается прямо из кнопки и не закрывает персонажа. Центр дуги — сама кнопка, поэтому направление пальца и положение ячеек совпадают.",
+  tags: ["дуга 160°", "вокруг кнопки", "номера 1–0"],
+  dim: 0.16,
+  thumbHover: 4,
+  L: { type: "arc", R: 206, slot: 54, start: Math.PI + 0.17, sweep: Math.PI - 0.34, anchor: "trigger", ext: 272, wExt: 245, tol: 0.42, hit: [40, 250], openMs: 340, closeMs: 170 },
+  pal: { "Рамка": "#b9bec6", "Подложка дуги": "#080a0c", "Подпись": "#ffffff" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 58 + 8 * pu, "#ffe2a0", 0.25 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    shapePath(ctx, "rsq", 0, 0, 62); ctx.fillStyle = "rgba(14,16,20,.9)"; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = metalGrad(ctx, 0, 0, 31, SILVER); ctx.stroke();
+    wheelGlyph(ctx, "#fff1cf", T.open);
+    ctx.restore(); holdRing(ctx, T, "#fff1cf", 42);
+  },
+  draw(ctx, M) {
+    const L = M.L, R = L.R, mid = L.start + L.sweep / 2, half = L.sweep / 2 + 0.16;
+    const span = half * (M.closing ? 1 : ease.outCubic(M.raw));
+    ctx.save(); ctx.globalAlpha = M.t;
+    ctx.beginPath(); ctx.arc(0, 0, R, mid - span, mid + span); ctx.lineWidth = 84; ctx.lineCap = "round"; ctx.strokeStyle = "rgba(8,10,12,.5)"; ctx.stroke();
+    ctx.lineCap = "butt"; ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(255,236,200,.35)";
+    ctx.beginPath(); ctx.arc(0, 0, R - 45, mid - span, mid + span); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, R + 45, mid - span, mid + span); ctx.stroke();
+    ctx.restore();
+    if (M.hover >= 0) {
+      const i = M.hover, a = M.ang[i], h = M.hoverT[i], r = R + 16 * h, nx = Math.cos(a + Math.PI / 2), ny = Math.sin(a + Math.PI / 2);
+      const x = Math.cos(a) * r, y = Math.sin(a) * r, g = ctx.createLinearGradient(0, 0, x, y);
+      g.addColorStop(0, rgba(SKILLS[i].color, 0)); g.addColorStop(1, rgba(SKILLS[i].color, 0.42 * h * M.t));
+      ctx.beginPath(); ctx.moveTo(nx * 5, ny * 5); ctx.lineTo(x + nx * 24, y + ny * 24); ctx.lineTo(x - nx * 24, y - ny * 24); ctx.lineTo(-nx * 5, -ny * 5); ctx.closePath();
+      ctx.fillStyle = g; ctx.fill();
+    }
+    for (const i of M.order) {
+      const rank = Math.abs(i - (N - 1) / 2) / ((N - 1) / 2), p = M.stag(i, 0.5, rank);
+      const e = M.closing ? p : ease.outBack(p, 1.6), h = M.hoverT[i], a = M.ang[i];
+      const r = R * e + 16 * h, x = Math.cos(a) * r + M.shk[i], y = Math.sin(a) * r;
+      const sz = 54 * (1 + 0.14 * h) * (0.6 + 0.4 * Math.min(e, 1));
+      ctx.save(); ctx.globalAlpha = clamp(p * 2, 0, 1) * (M.closing ? M.t : 1);
+      glow(ctx, x, y, sz * 1.05, SKILLS[i].color, 0.75 * h);
+      shapePath(ctx, "rsq", x, y + 3, sz); ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz, "rsq");
+      drawCooldown(ctx, M, i, x, y, sz, "rsq");
+      shapePath(ctx, "rsq", x, y, sz); ctx.lineWidth = 2.5; ctx.strokeStyle = mix("#b9bec6", "#ffffff", h); ctx.stroke();
+      shapePath(ctx, "rsq", x, y, sz - 6); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.stroke();
+      hotkey(ctx, i, x - sz * 0.42, y - sz * 0.46);
+      ctx.restore();
+    }
+    if (M.hover >= 0) {
+      const i = M.hover, h = M.hoverT[i], a = M.ang[i], r = R + 16 * h;
+      const x = Math.cos(a) * r, y = Math.sin(a) * r - 54;
+      ctx.save(); ctx.globalAlpha = h * M.t;
+      ctx.font = `600 14px ${FONT.ui}`;
+      const label = `${SKILLS[i].name} · MP ${SKILLS[i].mp}`, w = ctx.measureText(label).width + 24;
+      ctx.beginPath(); rrectPath(ctx, x - w / 2, y - 14, w, 28, 14); ctx.fillStyle = "rgba(10,12,16,.9)"; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = rgba(SKILLS[i].color, 0.7); ctx.stroke();
+      ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(label, x, y + 1);
+      ctx.restore();
+    }
+    drawKnob(ctx, M, "#ffe2a0");
+  },
+});
+
+/* 4 — Arcane circle: rotating runes, diamond frames, beam to the choice */
+const RUNES = [
+  [[0, -4, 0, 4], [0, -4, 3, -1]], [[-3, -4, -3, 4], [-3, 0, 3, -4], [-3, 0, 3, 4]], [[0, -4, 0, 4], [-3, -1, 3, -1]],
+  [[-3, 4, 0, -4], [0, -4, 3, 4], [-1.5, 0, 1.5, 0]], [[-3, -4, 3, 4], [3, -4, -3, 4]], [[0, -4, 0, 4], [0, -4, 3, -2], [0, 0, 3, -2]],
+  [[-3, -3, 3, -3], [0, -3, 0, 4], [-2, 1, 2, 1]], [[-2, -4, 2, 0], [2, 0, -2, 4]],
+];
+function drawRune(ctx, k) { ctx.beginPath(); RUNES[(k * 5 + 3) % RUNES.length].forEach(([a, b, c, d]) => { ctx.moveTo(a, b); ctx.lineTo(c, d); }); ctx.stroke(); }
+VARIANTS.push({
+  key: "arcane", name: "Магический круг",
+  desc: "Светящийся круг с медленно вращающимися рунами. Ромбы-ячейки связаны звездой, к выбранной из центра бьёт луч.",
+  tags: ["руны", "ромбы", "живая анимация"],
+  dim: 0.42,
+  L: { type: "ring", R: 140, slot: 60, start: -Math.PI / 2, anchor: "above", ext: 198, hit: [62, 206], openMs: 420, closeMs: 180 },
+  pal: { "Циан": "#63e6ff", "Фиолет": "#a879ff", "Фон круга": "#120b24" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 62 + 8 * pu, "#8a5cff", 0.35 + 0.35 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    circle(ctx, 0, 0, 31); ctx.fillStyle = "#130a28"; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = "#63e6ff"; ctx.stroke();
+    ctx.save(); ctx.rotate(T.time * 0.8); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(199,162,255,.8)";
+    for (let k = 0; k < 12; k++) { ctx.rotate(TAU / 12); ctx.beginPath(); ctx.moveTo(0, -27); ctx.lineTo(0, k % 3 ? -24 : -21); ctx.stroke(); }
+    ctx.restore();
+    wheelGlyph(ctx, "#bff5ff", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#63e6ff", 39);
+  },
+  draw(ctx, M) {
+    const q = M.closing ? 1 : ease.outCubic(clamp(M.raw / 0.7, 0, 1)), t = M.t, time = M.time, a0 = -Math.PI / 2;
+    ctx.save(); ctx.globalAlpha = t;
+    const g = ctx.createRadialGradient(0, 0, 20, 0, 0, 198);
+    g.addColorStop(0, "rgba(40,22,86,.62)"); g.addColorStop(0.72, "rgba(18,10,40,.72)"); g.addColorStop(1, "rgba(10,6,24,0)");
+    circle(ctx, 0, 0, 198); ctx.fillStyle = g; ctx.fill();
+    const ring = (r, w, col) => { ctx.beginPath(); ctx.arc(0, 0, r, a0, a0 + TAU * q); ctx.lineWidth = w; ctx.strokeStyle = col; ctx.stroke(); };
+    ring(192, 1.6, "rgba(99,230,255,.85)"); ring(174, 1, "rgba(168,121,255,.75)"); ring(88, 1.2, "rgba(99,230,255,.6)"); ring(80, 0.8, "rgba(168,121,255,.6)");
+    ctx.save(); ctx.rotate(time * 0.12); ctx.strokeStyle = "rgba(140,235,255,.65)"; ctx.lineWidth = 1.2; ctx.lineCap = "round";
+    for (let k = 0; k < 36 && k / 36 <= q; k++) { ctx.save(); ctx.rotate((k * TAU) / 36); ctx.translate(0, -183); drawRune(ctx, k); ctx.restore(); }
+    ctx.restore();
+    ctx.save(); ctx.rotate(-time * 0.2); ctx.beginPath();
+    for (let k = 0; k < 48; k++) { const a = (k * TAU) / 48; ctx.moveTo(Math.cos(a) * 80, Math.sin(a) * 80); ctx.lineTo(Math.cos(a) * (k % 4 ? 75 : 70), Math.sin(a) * (k % 4 ? 75 : 70)); }
+    ctx.strokeStyle = "rgba(168,121,255,.6)"; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+    ctx.beginPath();
+    for (let k = 0; k <= N; k++) { const a = M.ang[(k * 3) % N]; k ? ctx.lineTo(Math.cos(a) * 140, Math.sin(a) * 140) : ctx.moveTo(Math.cos(a) * 140, Math.sin(a) * 140); }
+    ctx.strokeStyle = "rgba(168,121,255,.3)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.restore();
+    if (M.hover >= 0) {
+      const i = M.hover, h = M.hoverT[i], a = M.ang[i], x = Math.cos(a) * 140, y = Math.sin(a) * 140;
+      const g2 = ctx.createLinearGradient(0, 0, x, y); g2.addColorStop(0, "rgba(99,230,255,0)"); g2.addColorStop(1, `rgba(140,240,255,${0.95 * h * t})`);
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = g2; ctx.lineCap = "round";
+      ctx.lineWidth = 8; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(x, y); ctx.stroke();
+      ctx.lineWidth = 2; ctx.globalAlpha = 1; ctx.stroke(); ctx.restore();
+    }
+    for (const i of M.order) {
+      const p = M.stag(i, 0.55), e = M.closing ? p : ease.outBack(p, 2), h = M.hoverT[i], a = M.ang[i];
+      const x = Math.cos(a) * 140 + M.shk[i], y = Math.sin(a) * 140, sz = 62 * e * (1 + 0.18 * h);
+      if (sz <= 1) continue;
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.6, 0, 1) * (M.closing ? t : 1);
+      glow(ctx, x, y, sz * 0.95, "#63e6ff", 0.12 + 0.75 * h);
+      shapePath(ctx, "diamond", x, y, sz); ctx.fillStyle = "rgba(18,11,36,.93)"; ctx.fill();
+      const fg = ctx.createLinearGradient(x, y - sz / 2, x, y + sz / 2); fg.addColorStop(0, "#c7a2ff"); fg.addColorStop(1, "#63e6ff");
+      ctx.lineWidth = 2 + 1.2 * h; ctx.strokeStyle = fg; ctx.stroke();
+      shapePath(ctx, "diamond", x, y, sz - 9); ctx.lineWidth = 0.8; ctx.strokeStyle = "rgba(199,162,255,.45)"; ctx.stroke();
+      drawIcon(ctx, i, x, y, sz * 0.56);
+      drawCooldown(ctx, M, i, x, y, sz * 0.56);
+      ctx.restore();
+    }
+    ctx.save(); ctx.globalAlpha = t;
+    glow(ctx, 0, 0, 82, "#7b4dff", 0.45 + 0.1 * Math.sin(time * 2));
+    const og = ctx.createRadialGradient(0, -10, 4, 0, 0, 52); og.addColorStop(0, "#2c1858"); og.addColorStop(1, "#0b0619");
+    circle(ctx, 0, 0, 52); ctx.fillStyle = og; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(99,230,255,.6)"; ctx.stroke();
+    if (M.hover >= 0) {
+      const i = M.hover; ctx.globalAlpha = t * (0.35 + 0.65 * M.hoverT[i]);
+      fitText(ctx, SKILLS[i].name, 0, -8, { family: FONT.display, weight: 400, size: 18, min: 11, maxW: 86, color: "#dff8ff" });
+      fitText(ctx, statLine(i), 0, 20, { size: 10.5, weight: 500, color: "#b9a3ff", maxW: 86 });
+    } else fitText(ctx, idleText(M), 0, 0, { family: FONT.display, weight: 400, size: 14, maxW: 80, color: "rgba(223,248,255,.72)" });
+    ctx.restore();
+    drawKnob(ctx, M, "#63e6ff");
+  },
+});
+
+/* 5 — Honeycomb: sci-fi hexes, others dim on focus */
+VARIANTS.push({
+  key: "hex", name: "Соты",
+  desc: "Шестигранные ячейки в духе sci-fi. При выборе остальные гаснут, по активной бежит линия сканера; в центральном гексе — данные умения.",
+  tags: ["гексы", "sci-fi", "фокус"],
+  dim: 0.4,
+  L: { type: "ring", R: 140, slot: 64, start: -Math.PI / 2, anchor: "above", ext: 194, hit: [60, 204], openMs: 320, closeMs: 160 },
+  pal: { "Бирюза": "#38f2d0", "Ячейка": "#04121a", "Текст": "#ffffff" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 8 * pu, "#38f2d0", 0.25 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    shapePath(ctx, "hex", 0, 0, 72); ctx.fillStyle = "rgba(4,18,22,.92)"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#38f2d0"; ctx.stroke();
+    shapePath(ctx, "hex", 0, 0, 60); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(56,242,208,.35)"; ctx.stroke();
+    wheelGlyph(ctx, "#bffff1", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#38f2d0", 42);
+  },
+  draw(ctx, M) {
+    const TEAL = "#38f2d0", t = M.t;
+    ctx.save(); ctx.globalAlpha = t;
+    circle(ctx, 0, 0, 140); ctx.lineWidth = 1; ctx.strokeStyle = rgba(TEAL, 0.22); ctx.stroke();
+    ctx.beginPath();
+    for (let k = 0; k < 40; k++) { const a = (k * TAU) / 40, r1 = k % 4 ? 186 : 193; ctx.moveTo(Math.cos(a) * 181, Math.sin(a) * 181); ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1); }
+    ctx.strokeStyle = rgba(TEAL, 0.42); ctx.stroke();
+    ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.6), e = M.closing ? p : ease.outBack(p, 2.4), h = M.hoverT[i], a = M.ang[i];
+      const x = Math.cos(a) * 140 + M.shk[i], y = Math.sin(a) * 140, sz = 64 * e * (1 + 0.12 * h);
+      if (sz <= 1) continue;
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.6, 0, 1) * (M.closing ? t : 1);
+      glow(ctx, x, y, sz, TEAL, 0.6 * h);
+      shapePath(ctx, "hex", x, y, sz); ctx.fillStyle = "rgba(4,18,22,.9)"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz - 8, "hex", 1 - 0.55 * M.any * (1 - h));
+      if (h > 0.01) {
+        ctx.save(); shapePath(ctx, "hex", x, y, sz - 8); ctx.clip();
+        ctx.fillStyle = rgba(TEAL, 0.16 * h); ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+        ctx.fillStyle = rgba("#d8fff6", 0.6 * h); ctx.fillRect(x - sz / 2, y - sz / 2 + ((M.time * 1.4) % 1) * sz, sz, 2);
+        ctx.restore();
+      }
+      drawCooldown(ctx, M, i, x, y, sz - 8, "hex");
+      shapePath(ctx, "hex", x, y, sz); ctx.lineWidth = 1.5 + 1.5 * h; ctx.strokeStyle = rgba(TEAL, 0.45 + 0.55 * h); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save(); ctx.globalAlpha = t;
+    if (M.hover >= 0) {
+      const a = M.ang[M.hover], h = M.hoverT[M.hover];
+      ctx.globalAlpha = t * h; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 56, Math.sin(a) * 56); ctx.lineTo(Math.cos(a) * 104, Math.sin(a) * 104);
+      ctx.lineWidth = 1.5; ctx.strokeStyle = TEAL; ctx.stroke();
+      shapePath(ctx, "sq", Math.cos(a) * 80, Math.sin(a) * 80, 6); ctx.fillStyle = TEAL; ctx.fill();
+      ctx.globalAlpha = t;
+    }
+    shapePath(ctx, "hex", 0, 0, 118); ctx.fillStyle = "rgba(3,13,16,.93)"; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(TEAL, 0.7); ctx.stroke();
+    shapePath(ctx, "hex", 0, 0, 106); ctx.lineWidth = 0.8; ctx.strokeStyle = rgba(TEAL, 0.25); ctx.stroke();
+    if (M.hover >= 0) {
+      const i = M.hover; ctx.globalAlpha = t * (0.35 + 0.65 * M.hoverT[i]);
+      fitText(ctx, SKILLS[i].name, 0, -8, { family: FONT.tech, weight: 700, size: 14, min: 9, maxW: 82, upper: true, color: "#ffffff" });
+      fitText(ctx, statLine(i), 0, 19, { family: FONT.tech, size: 11, weight: 500, color: TEAL, maxW: 82 });
+    } else fitText(ctx, M.drag ? "ведите к навыку" : "выбор навыка", 0, 0, { family: FONT.tech, weight: 700, size: 11, upper: true, maxW: 80, color: rgba(TEAL, 0.75) });
+    ctx.restore();
+    if (M.cursor) {
+      const k = M.cursor;
+      ctx.save(); ctx.translate(k.x, k.y); ctx.rotate(Math.PI / 4); glow(ctx, 0, 0, 22, TEAL, 0.8);
+      ctx.fillStyle = "#e6fffa"; ctx.fillRect(-5, -5, 10, 10); ctx.strokeStyle = TEAL; ctx.lineWidth = 2; ctx.strokeRect(-5, -5, 10, 10); ctx.restore();
+    }
+  },
+});
+/* ============ variants 6–10 ============ */
+function neonStroke(ctx, path, col, w) {
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.lineCap = "round";
+  [[w * 6, 0.07], [w * 3, 0.16], [w, 0.95]].forEach(([lw, al]) => { path(); ctx.lineWidth = lw; ctx.strokeStyle = rgba(col, al); ctx.stroke(); });
+  path(); ctx.lineWidth = Math.max(0.6, w * 0.4); ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.stroke();
+  ctx.restore();
+}
+
+/* 6 — Neon: light lines only */
+VARIANTS.push({
+  key: "neon", name: "Неон",
+  desc: "Только светящиеся линии на затемнённом экране. Выбранный сектор вспыхивает жёлтой дугой, название дрожит с RGB-сдвигом.",
+  tags: ["неон", "линии", "глитч"],
+  dim: 0.55,
+  L: { type: "ring", R: 138, slot: 54, start: -Math.PI / 2, anchor: "above", ext: 196, hit: [58, 204], openMs: 280, closeMs: 150 },
+  pal: { "Маджента": "#ff3fd2", "Циан": "#28e7ff", "Выбор": "#ffe45c" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 62 + 8 * pu, "#ff3fd2", 0.3 + 0.35 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    circle(ctx, 0, 0, 31); ctx.fillStyle = "rgba(8,0,18,.88)"; ctx.fill();
+    neonStroke(ctx, () => circle(ctx, 0, 0, 30), "#ff3fd2", 2);
+    neonStroke(ctx, () => circle(ctx, 0, 0, 24), "#28e7ff", 1.1);
+    wheelGlyph(ctx, "#ffe45c", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#ffe45c", 40);
+  },
+  draw(ctx, M) {
+    const t = M.t, q = M.closing ? 1 : ease.outCubic(M.raw), a0 = -Math.PI / 2;
+    const flick = M.closing || M.raw >= 0.5 ? 1 : Math.floor(M.raw * 22) % 3 ? 1 : 0.35;
+    ctx.save(); ctx.globalAlpha = t * flick;
+    circle(ctx, 0, 0, 192); ctx.fillStyle = "rgba(6,0,14,.4)"; ctx.fill();
+    neonStroke(ctx, () => { ctx.beginPath(); ctx.arc(0, 0, 182, a0, a0 + TAU * q); }, "#ff3fd2", 2);
+    neonStroke(ctx, () => { ctx.beginPath(); ctx.arc(0, 0, 92, a0, a0 - TAU * q, true); }, "#28e7ff", 1.5);
+    if (M.hover >= 0) {
+      const a = M.ang[M.hover]; ctx.globalAlpha = t * M.hoverT[M.hover];
+      neonStroke(ctx, () => { ctx.beginPath(); ctx.arc(0, 0, 182, a - 0.27, a + 0.27); }, "#ffe45c", 3.2);
+      neonStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(Math.cos(a) * 92, Math.sin(a) * 92); ctx.lineTo(Math.cos(a) * 106, Math.sin(a) * 106); }, "#ffe45c", 1.4);
+    }
+    ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.4), e = M.closing ? p : ease.outBack(p, 1.4), h = M.hoverT[i], a = M.ang[i];
+      const r = 138 * (0.7 + 0.3 * e), x = Math.cos(a) * r + M.shk[i], y = Math.sin(a) * r, sz = 54 * (1 + 0.15 * h);
+      const col = i % 2 ? "#28e7ff" : "#ff3fd2";
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.6, 0, 1) * (M.closing ? t : 1) * flick;
+      circle(ctx, x, y, sz / 2); ctx.fillStyle = "rgba(5,0,14,.88)"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz - 12, "circle", 0.92);
+      drawCooldown(ctx, M, i, x, y, sz - 12);
+      const base = ctx.globalAlpha;
+      ctx.globalAlpha = base * (1 - h); neonStroke(ctx, () => circle(ctx, x, y, sz / 2), col, 1.6);
+      ctx.globalAlpha = base * h; neonStroke(ctx, () => circle(ctx, x, y, sz / 2), "#ffe45c", 2.6);
+      ctx.restore();
+    }
+    ctx.save(); ctx.globalAlpha = t;
+    if (M.hover >= 0) {
+      const i = M.hover, j = M.hoverT[i] < 0.92 ? (Math.random() - 0.5) * 4 : 0, nm = SKILLS[i].name;
+      const o = { family: FONT.tech, weight: 700, size: 16, min: 10, upper: true, maxW: 140 };
+      ctx.globalCompositeOperation = "lighter";
+      fitText(ctx, nm, -1.6 + j, -6, { ...o, color: "rgba(40,231,255,.85)" });
+      fitText(ctx, nm, 1.6 - j, -6, { ...o, color: "rgba(255,63,210,.85)" });
+      ctx.globalCompositeOperation = "source-over";
+      fitText(ctx, nm, 0, -6, { ...o, color: "#ffffff" });
+      fitText(ctx, statLine(i), 0, 22, { family: FONT.tech, size: 11, weight: 500, color: "#ffe45c", maxW: 140 });
+    } else fitText(ctx, M.drag ? "ведите" : "выбор", 0, 0, { family: FONT.tech, weight: 700, size: 13, upper: true, color: "rgba(40,231,255,.85)" });
+    ctx.restore();
+    drawKnob(ctx, M, "#ffe45c");
+  },
+});
+
+/* 7 — Royal star: two radii, bigger icons, still 36° per skill */
+VARIANTS.push({
+  key: "star", name: "Королевская звезда",
+  desc: "Ячейки чередуются на двух радиусах и складываются в десятиконечную звезду, поэтому иконки крупнее. Выбор всё так же по направлению: 36° на умение.",
+  tags: ["два радиуса", "звезда", "синий и золото"],
+  dim: 0.36,
+  L: { type: "star", R: 112, R2: 170, slot: 54, start: -Math.PI / 2, anchor: "above", ext: 214, hit: [54, 214], openMs: 340, closeMs: 170 },
+  pal: { "Синий": "#1d3a8f", "Золото": "#e7c46a", "Светлое золото": "#fff0b8" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 8 * pu, "#ffd36b", 0.28 + 0.32 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    ctx.beginPath();
+    for (let k = 0; k < 16; k++) { const a = -Math.PI / 2 + (k * TAU) / 16, r = k % 2 ? 26 : 35; k ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+    ctx.closePath(); ctx.fillStyle = "#13235a"; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = metalGrad(ctx, 0, 0, 34, GOLD); ctx.stroke();
+    wheelGlyph(ctx, "#fff0b8", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#fff0b8", 41);
+  },
+  draw(ctx, M) {
+    const t = M.t, rot = M.closing ? 0 : (1 - ease.outCubic(M.raw)) * (-Math.PI / 5);
+    const sc = M.closing ? 0.9 + 0.1 * t : Math.max(0.01, ease.outBack(M.raw, 1.3));
+    const V = M.ang.map((a, i) => [Math.cos(a) * M.rad[i], Math.sin(a) * M.rad[i]]);
+    const VO = M.ang.map((a, i) => { const r = M.rad[i] + (i % 2 ? 46 : 20); return [Math.cos(a) * r, Math.sin(a) * r]; });
+    ctx.save(); ctx.rotate(rot); ctx.scale(sc, sc);
+    ctx.save(); ctx.globalAlpha = t;
+    ctx.beginPath(); VO.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
+    const g = ctx.createRadialGradient(0, 0, 30, 0, 0, 210); g.addColorStop(0, "rgba(36,66,160,.66)"); g.addColorStop(1, "rgba(11,20,48,.86)");
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = "rgba(231,196,106,.85)"; ctx.stroke();
+    if (M.hover >= 0) {
+      const i = M.hover, pr = VO[(i + N - 1) % N], nx = VO[(i + 1) % N], v = VO[i];
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo((pr[0] + v[0]) / 2, (pr[1] + v[1]) / 2); ctx.lineTo(v[0], v[1]); ctx.lineTo((nx[0] + v[0]) / 2, (nx[1] + v[1]) / 2); ctx.closePath();
+      const wg = ctx.createLinearGradient(0, 0, v[0], v[1]); wg.addColorStop(0, "rgba(231,196,106,0)"); wg.addColorStop(1, `rgba(255,224,140,${0.4 * M.hoverT[i]})`);
+      ctx.fillStyle = wg; ctx.fill();
+    }
+    ctx.beginPath(); V.forEach(([x, y]) => { ctx.moveTo(0, 0); ctx.lineTo(x, y); }); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(231,196,106,.18)"; ctx.stroke();
+    ctx.beginPath(); V.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.strokeStyle = "rgba(231,196,106,.3)"; ctx.stroke();
+    ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.45), e = M.closing ? 1 : ease.outBack(p, 1.8), h = M.hoverT[i];
+      const x = V[i][0] + M.shk[i], y = V[i][1], sz = 56 * (1 + 0.18 * h) * Math.max(0, e);
+      if (sz <= 1) continue;
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.6, 0, 1) * (M.closing ? t : 1);
+      glow(ctx, x, y, sz * 1.1, "#ffd36b", 0.8 * h);
+      shapePath(ctx, "rsq", x, y, sz); ctx.fillStyle = "#0e1a3e"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz - 9, "rsq");
+      drawCooldown(ctx, M, i, x, y, sz - 9, "rsq");
+      shapePath(ctx, "rsq", x, y, sz); ctx.lineWidth = 2.6; ctx.strokeStyle = metalGrad(ctx, x, y, sz / 2, GOLD); ctx.stroke();
+      shapePath(ctx, "rsq", x, y, sz - 5); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = t;
+    const mg = ctx.createRadialGradient(0, -12, 4, 0, 0, 56); mg.addColorStop(0, "#28479e"); mg.addColorStop(1, "#0b1430");
+    circle(ctx, 0, 0, 56); ctx.fillStyle = mg; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = metalGrad(ctx, 0, 0, 56, GOLD); ctx.stroke();
+    for (let k = 0; k < N; k++) { const a = M.ang[k]; circle(ctx, Math.cos(a) * 49, Math.sin(a) * 49, k === M.hover ? 2.6 : 1.5); ctx.fillStyle = "#e7c46a"; ctx.fill(); }
+    if (M.hover >= 0) {
+      const i = M.hover; ctx.globalAlpha = t * (0.35 + 0.65 * M.hoverT[i]);
+      fitText(ctx, SKILLS[i].name, 0, -8, { family: FONT.display, weight: 400, size: 18, min: 11, maxW: 86, color: "#fff0b8" });
+      fitText(ctx, statLine(i), 0, 20, { size: 10.5, weight: 500, color: "#c7d3ff", maxW: 86 });
+    } else fitText(ctx, idleText(M), 0, 0, { family: FONT.display, weight: 400, size: 14, maxW: 80, color: "rgba(255,240,184,.75)" });
+    ctx.restore();
+    drawKnob(ctx, M, "#ffd36b");
+  },
+});
+
+/* 8 — Parchment: warm paper, ink, wax-seal highlight */
+let PARCH = null;
+function parchment() {
+  if (PARCH) return PARCH;
+  let seed = 1234567;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const S = 512, c = document.createElement("canvas"); c.width = c.height = S;
+  const g = c.getContext("2d");
+  g.fillStyle = "#e8d3a6"; g.fillRect(0, 0, S, S);
+  for (let k = 0; k < 140; k++) {
+    const x = rnd() * S, y = rnd() * S, r = 10 + rnd() * 60, gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(${150 + rnd() * 40 | 0},${110 + rnd() * 30 | 0},${60 + rnd() * 20 | 0},${0.05 + rnd() * 0.08})`); gr.addColorStop(1, "rgba(150,110,60,0)");
+    g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  for (let k = 0; k < 2600; k++) { g.fillStyle = `rgba(90,60,30,${rnd() * 0.12})`; g.fillRect(rnd() * S, rnd() * S, 1 + rnd() * 1.5, 1); }
+  const e = g.createRadialGradient(S / 2, S / 2, S * 0.3, S / 2, S / 2, S * 0.5);
+  e.addColorStop(0, "rgba(80,45,10,0)"); e.addColorStop(0.85, "rgba(110,65,20,.25)"); e.addColorStop(1, "rgba(70,35,8,.8)");
+  g.fillStyle = e; g.fillRect(0, 0, S, S);
+  return (PARCH = c);
+}
+function waxPath(ctx, x, y, r, seed) {
+  ctx.beginPath();
+  for (let k = 0; k <= 18; k++) { const a = (k * TAU) / 18, rr = r * (1 + 0.07 * Math.sin(k * 2.3 + seed)); k ? ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) : ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  ctx.closePath();
+}
+VARIANTS.push({
+  key: "parch", name: "Пергамент",
+  desc: "Тёплый свиток с чернильными кольцами вместо тёмного стекла. Меню разворачивается из центра, выбранное умение отмечается сургучной печатью.",
+  tags: ["светлый", "чернила", "печать"],
+  dim: 0.32,
+  L: { type: "ring", R: 138, slot: 56, start: -Math.PI / 2, anchor: "above", ext: 200, hit: [60, 206], openMs: 360, closeMs: 180 },
+  pal: { "Бумага": "#e8d3a6", "Чернила": "#3b2412", "Сургуч": "#a3201c", "Золото": "#b8873b" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 58 + 8 * pu, "#ff9a4a", 0.25 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    waxPath(ctx, 0, 0, 32, 1);
+    const g = ctx.createRadialGradient(-8, -10, 2, 0, 0, 36); g.addColorStop(0, "#d4493b"); g.addColorStop(1, "#6e1009");
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(60,8,4,.7)"; ctx.stroke();
+    circle(ctx, 0, 0, 22); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(255,190,170,.35)"; ctx.stroke();
+    wheelGlyph(ctx, "#ffd9c9", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#ffd9a0", 41);
+  },
+  draw(ctx, M) {
+    const t = M.t, e = M.closing ? 1 : ease.outCubic(M.raw), INK = "#3b2412", R = 138;
+    ctx.save(); ctx.globalAlpha = M.closing ? t : 1; ctx.rotate((1 - e) * 0.25);
+    circle(ctx, 0, 0, 200 * (M.closing ? 0.85 + 0.15 * t : e) + 1); ctx.clip();
+    circle(ctx, 4, 8, 196); ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fill();
+    ctx.save(); circle(ctx, 0, 0, 196); ctx.clip(); ctx.drawImage(parchment(), -196, -196, 392, 392); ctx.restore();
+    circle(ctx, 0, 0, 187); ctx.lineWidth = 2; ctx.strokeStyle = rgba(INK, 0.8); ctx.stroke();
+    circle(ctx, 0, 0, 181); ctx.lineWidth = 0.8; ctx.strokeStyle = rgba(INK, 0.5); ctx.stroke();
+    circle(ctx, 0, 0, 94); ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(INK, 0.7); ctx.stroke();
+    for (let i = 0; i < N; i++) {
+      const a = M.ang[i] + Math.PI / N, x = Math.cos(a) * R, y = Math.sin(a) * R;
+      circle(ctx, x, y, 2.4); ctx.fillStyle = rgba(INK, 0.8); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 7, a + 0.5, a + 2.4); ctx.moveTo(x + Math.cos(a + Math.PI + 0.5) * 7, y + Math.sin(a + Math.PI + 0.5) * 7);
+      ctx.arc(x, y, 7, a + Math.PI + 0.5, a + Math.PI + 2.4); ctx.lineWidth = 1; ctx.strokeStyle = rgba(INK, 0.55); ctx.stroke();
+    }
+    for (const i of M.order) {
+      const p = M.stag(i, 0.45), ee = M.closing ? 1 : ease.outBack(p), h = M.hoverT[i], a = M.ang[i];
+      const x = Math.cos(a) * R + M.shk[i], y = Math.sin(a) * R, sz = 56 * (1 + 0.12 * h) * (0.6 + 0.4 * Math.min(ee, 1));
+      ctx.save(); ctx.globalAlpha *= clamp(p * 1.8, 0, 1);
+      if (h > 0.01) {
+        ctx.save(); ctx.globalAlpha *= h; waxPath(ctx, x, y, sz * 0.68, i);
+        const wg = ctx.createRadialGradient(x - 8, y - 10, 2, x, y, sz * 0.7); wg.addColorStop(0, "#d04434"); wg.addColorStop(1, "#7d1410");
+        ctx.fillStyle = wg; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(60,8,4,.6)"; ctx.stroke(); ctx.restore();
+      }
+      drawIcon(ctx, i, x, y, sz - 6);
+      circle(ctx, x, y, (sz - 6) / 2); ctx.fillStyle = `rgba(233,214,174,${0.22 * (1 - h)})`; ctx.fill();
+      drawCooldown(ctx, M, i, x, y, sz - 6);
+      circle(ctx, x, y, sz / 2 - 2); ctx.lineWidth = 2.2; ctx.strokeStyle = INK; ctx.stroke();
+      circle(ctx, x, y, sz / 2 - 5.5); ctx.lineWidth = 0.9; ctx.strokeStyle = "#b8873b"; ctx.stroke();
+      ctx.restore();
+    }
+    if (M.hover >= 0) {
+      const i = M.hover; ctx.globalAlpha = (M.closing ? t : 1) * (0.35 + 0.65 * M.hoverT[i]);
+      const r = fitText(ctx, SKILLS[i].name, 0, -8, { family: FONT.display, weight: 400, size: 20, min: 12, maxW: 150, color: INK });
+      ctx.beginPath(); ctx.moveTo(-46, 6 + r.h / 2 - 8); ctx.quadraticCurveTo(0, 14 + r.h / 2 - 8, 46, 4 + r.h / 2 - 8); ctx.lineWidth = 1.4; ctx.strokeStyle = rgba(INK, 0.7); ctx.stroke();
+      fitText(ctx, statLine(i), 0, 24 + (r.n - 1) * 8, { size: 11.5, weight: 500, italic: true, color: rgba(INK, 0.8), maxW: 140 });
+    } else fitText(ctx, idleText(M), 0, 0, { family: FONT.display, weight: 400, size: 16, maxW: 140, color: rgba(INK, 0.65) });
+    ctx.restore();
+    drawKnob(ctx, M, "#3b2412");
+  },
+});
+
+/* 9 — Dial: 270° gauge open toward the button, spring needle */
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+VARIANTS.push({
+  key: "dial", name: "Циферблат",
+  desc: "Шкала на 270° открыта вниз, к кнопке, как у часов или спидометра. Выбор показывает стрелка с пружинной анимацией, у ячеек римские номера.",
+  tags: ["шкала 270°", "стрелка", "римские цифры"],
+  dim: 0.34,
+  L: { type: "gauge", R: 146, slot: 46, start: (3 * Math.PI) / 4, sweep: (3 * Math.PI) / 2, anchor: "above", lift: 164, ext: 206, tol: 0.3, hit: [54, 212], openMs: 400, closeMs: 170 },
+  pal: { "Золото": "#d8b56a", "Циферблат": "#0a0908", "Текст": "#f3e2b5", "Камень": "#c0392b" },
+  trigger(ctx, T) {
+    const pu = pulseOf(T), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 58 + 8 * pu, "#ffcf73", 0.25 + 0.3 * pu * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    circle(ctx, 0, 0, 32); ctx.fillStyle = metalGrad(ctx, 0, 0, 32, GOLD); ctx.fill();
+    ctx.beginPath(); for (let k = 0; k < 32; k++) { const a = (k * TAU) / 32; ctx.moveTo(Math.cos(a) * 28, Math.sin(a) * 28); ctx.lineTo(Math.cos(a) * 32, Math.sin(a) * 32); }
+    ctx.lineWidth = 1.4; ctx.strokeStyle = "rgba(70,45,10,.7)"; ctx.stroke();
+    circle(ctx, 0, 0, 25); ctx.fillStyle = "#15120d"; ctx.fill();
+    wheelGlyph(ctx, "#f3e2b5", T.open, 12);
+    ctx.restore(); holdRing(ctx, T, "#ffe3a0", 41);
+  },
+  update(M, dt) {
+    const vs = M.vs;
+    if (vs.na === undefined) { vs.na = -Math.PI / 2; vs.nv = 0; }
+    let target = -Math.PI / 2;
+    if (M.hover >= 0) target = M.ang[M.hover];
+    else if (M.cursor && Math.hypot(M.cursor.x, M.cursor.y) > 4) target = Math.atan2(M.cursor.y, M.cursor.x);
+    vs.nv += (angDiff(target, vs.na) * 170 - vs.nv * 15) * dt;
+    vs.na += vs.nv * dt;
+  },
+  draw(ctx, M) {
+    const L = M.L, t = M.t, e = M.closing ? 1 : ease.outBack(M.raw, 1.2), a0 = L.start, a1 = L.start + L.sweep, step = L.sweep / (N - 1);
+    ctx.save(); ctx.globalAlpha = t; ctx.rotate((1 - e) * -0.6); ctx.scale(0.85 + 0.15 * e, 0.85 + 0.15 * e);
+    ctx.beginPath(); ctx.arc(0, 0, 184, a0 - 0.12, a1 + 0.12); ctx.lineWidth = 38; ctx.lineCap = "round"; ctx.strokeStyle = "rgba(10,9,8,.86)"; ctx.stroke(); ctx.lineCap = "butt";
+    if (M.hover >= 0) { const a = M.ang[M.hover]; ctx.beginPath(); ctx.arc(0, 0, 184, a - step / 2, a + step / 2); ctx.lineWidth = 36; ctx.strokeStyle = `rgba(216,181,106,${0.2 * M.hoverT[M.hover]})`; ctx.stroke(); }
+    [165, 203].forEach((r) => { ctx.beginPath(); ctx.arc(0, 0, r, a0 - 0.1, a1 + 0.1); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(216,181,106,.85)"; ctx.stroke(); });
+    const fg = ctx.createRadialGradient(0, -20, 10, 0, 0, 122); fg.addColorStop(0, "#1d1913"); fg.addColorStop(1, "#090807");
+    circle(ctx, 0, 0, 121); ctx.fillStyle = fg; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(216,181,106,.6)"; ctx.stroke();
+    ctx.beginPath();
+    for (let k = 0; k <= 54; k++) { if (k % 6 === 0) continue; const a = a0 + (k * L.sweep) / 54, r1 = k % 3 === 0 ? 184 : 180; ctx.moveTo(Math.cos(a) * 172, Math.sin(a) * 172); ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1); }
+    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(216,181,106,.65)"; ctx.stroke();
+    ctx.font = `400 14px ${FONT.display}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (let i = 0; i < N; i++) { const a = M.ang[i]; ctx.fillStyle = i === M.hover ? "#fff1c8" : "rgba(216,181,106,.9)"; ctx.fillText(ROMAN[i], Math.cos(a) * 185, Math.sin(a) * 185 + 1); }
+    ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.5), ee = M.closing ? 1 : ease.outBack(p, 1.8), h = M.hoverT[i], a = M.ang[i];
+      const r = 146 * (0.8 + 0.2 * ee), x = Math.cos(a) * r + M.shk[i], y = Math.sin(a) * r, sz = 46 * (1 + 0.16 * h) * Math.min(Math.max(ee, 0), 1.1);
+      if (sz <= 1) continue;
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.7, 0, 1) * (M.closing ? t : 1);
+      glow(ctx, x, y, sz * 1.1, "#ffcf73", 0.7 * h);
+      circle(ctx, x, y, sz / 2); ctx.fillStyle = "#0b0a08"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz - 6);
+      drawCooldown(ctx, M, i, x, y, sz - 6);
+      circle(ctx, x, y, sz / 2 - 1); ctx.lineWidth = 1.5 + 1.5 * h; ctx.strokeStyle = metalGrad(ctx, x, y, sz / 2, GOLD); ctx.stroke();
+      ctx.restore();
+    }
+    const na = M.vs.na ?? -Math.PI / 2;
+    ctx.save(); ctx.globalAlpha = t; ctx.rotate(na);
+    ctx.beginPath(); ctx.moveTo(-26, -3.5); ctx.lineTo(0, -5.5); ctx.lineTo(108, -1.4); ctx.lineTo(116, 0); ctx.lineTo(108, 1.4); ctx.lineTo(0, 5.5); ctx.lineTo(-26, 3.5); ctx.closePath();
+    const ng = ctx.createLinearGradient(0, -6, 0, 6); ng.addColorStop(0, "#fff1c8"); ng.addColorStop(0.5, "#d8b56a"); ng.addColorStop(1, "#7a5a1e");
+    ctx.fillStyle = ng; ctx.fill(); ctx.lineWidth = 0.8; ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.stroke();
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = t;
+    const jg = ctx.createRadialGradient(-2, -3, 1, 0, 0, 10); jg.addColorStop(0, "#ff9a8a"); jg.addColorStop(1, "#7a0e0e");
+    circle(ctx, 0, 0, 9); ctx.fillStyle = jg; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = metalGrad(ctx, 0, 0, 9, GOLD); ctx.stroke();
+    if (M.hover >= 0) {
+      const i = M.hover; ctx.globalAlpha = t * (0.35 + 0.65 * M.hoverT[i]);
+      fitText(ctx, ROMAN[i], 0, -50, { family: FONT.display, weight: 400, size: 26, color: "#d8b56a" });
+      fitText(ctx, SKILLS[i].name, 0, 44, { family: FONT.display, weight: 400, size: 17, min: 11, maxW: 150, color: "#f3e2b5" });
+      fitText(ctx, statLine(i), 0, 66, { size: 11, weight: 500, color: "#bba67a", maxW: 120 });
+    } else fitText(ctx, idleText(M), 0, 48, { family: FONT.display, weight: 400, size: 15, maxW: 150, color: "rgba(243,226,181,.7)" });
+    ctx.restore();
+  },
+});
+
+/* 10 — Forge ember: iron ring, rivets, ember particles */
+VARIANTS.push({
+  key: "ember", name: "Кузнечное пламя",
+  desc: "Кованое железное кольцо с заклёпками, по нему тлеют угли. Выбранная ячейка раскаляется и выбрасывает искры.",
+  tags: ["железо", "частицы", "огонь"],
+  dim: 0.36,
+  L: { type: "ring", R: 142, slot: 54, start: -Math.PI / 2, anchor: "above", ext: 198, hit: [62, 206], openMs: 300, closeMs: 180 },
+  pal: { "Железо": "#3d3632", "Заклёпки": "#8a7f76", "Жар": "#ff8a2a", "Текст": "#ffd38a" },
+  trigger(ctx, T) {
+    const fl = 0.5 + 0.5 * Math.sin(T.time * 9) * Math.sin(T.time * 3.7), p = 1 - 0.08 * T.pressed;
+    glow(ctx, 0, 0, 60 + 10 * fl, "#ff7a1a", 0.3 + 0.35 * fl * (1 - T.open));
+    ctx.save(); ctx.scale(p, p);
+    const g = ctx.createRadialGradient(-8, -10, 2, 0, 0, 34); g.addColorStop(0, "#4a423d"); g.addColorStop(1, "#1a1715");
+    circle(ctx, 0, 0, 31); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#6b625b"; ctx.stroke();
+    for (let k = 0; k < 8; k++) { const a = (k * TAU) / 8 + Math.PI / 8; circle(ctx, Math.cos(a) * 26, Math.sin(a) * 26, 1.8); ctx.fillStyle = "#9a8e84"; ctx.fill(); }
+    wheelGlyph(ctx, "#ffb347", T.open, 13);
+    ctx.restore(); holdRing(ctx, T, "#ffb347", 40);
+  },
+  update(M, dt) {
+    const vs = M.vs; vs.parts = vs.parts || []; vs.acc = vs.acc || 0;
+    const P = vs.parts;
+    vs.acc += dt * 42 * M.t;
+    while (vs.acc > 1) {
+      vs.acc -= 1;
+      const a = Math.random() * TAU, r = 142 + (Math.random() - 0.5) * 44;
+      P.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, vx: (Math.random() - 0.5) * 14, vy: -18 - Math.random() * 34, life: 0, max: 0.7 + Math.random() * 0.9, s: 1.4 + Math.random() * 2 });
+    }
+    if (M.hover >= 0) {
+      const a = M.ang[M.hover], h = M.hoverT[M.hover];
+      for (let n = dt * 80 * h; n > 0; n--) {
+        if (n < 1 && Math.random() > n) break;
+        P.push({ x: Math.cos(a) * 142 + (Math.random() - 0.5) * 34, y: Math.sin(a) * 142 + (Math.random() - 0.5) * 34, vx: (Math.random() - 0.5) * 30, vy: -40 - Math.random() * 60, life: 0, max: 0.5 + Math.random() * 0.7, s: 1.6 + Math.random() * 2.4 });
+      }
+    }
+    for (let k = P.length - 1; k >= 0; k--) {
+      const p = P[k]; p.life += dt;
+      if (p.life > p.max) { P.splice(k, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vx += (Math.random() - 0.5) * 40 * dt;
+    }
+    if (P.length > 260) P.splice(0, P.length - 260);
+  },
+  draw(ctx, M) {
+    const t = M.t, e = M.closing ? 1 : ease.outCubic(M.raw), sc = M.closing ? 0.92 + 0.08 * t : 1.08 - 0.08 * e, time = M.time;
+    ctx.save(); ctx.scale(sc, sc); ctx.globalAlpha = t;
+    if (!M.closing) glow(ctx, 0, 0, 230, "#ffb347", (1 - M.raw) * 0.6);
+    for (let k = 0; k < 20; k++) {
+      const a = (k * TAU) / 20 + time * 0.05, fl = 0.5 + 0.5 * Math.sin(time * 7 + k * 1.7) * Math.sin(time * 3.1 + k);
+      glow(ctx, Math.cos(a) * 142, Math.sin(a) * 142, 42 + 10 * fl, "#ff6a1a", 0.16 + 0.14 * fl);
+    }
+    ctx.beginPath(); ctx.arc(0, 0, 166, 0, TAU); ctx.arc(0, 0, 118, 0, TAU, true);
+    const g = ctx.createRadialGradient(0, 0, 118, 0, 0, 166); g.addColorStop(0, "#221e1b"); g.addColorStop(0.5, "#3d3632"); g.addColorStop(1, "#1b1715");
+    ctx.fillStyle = g; ctx.fill();
+    [[166, "#6b625b", 1.6], [118, "#6b625b", 1.6], [161, "rgba(0,0,0,.55)", 1]].forEach(([r, c, w]) => { circle(ctx, 0, 0, r); ctx.lineWidth = w; ctx.strokeStyle = c; ctx.stroke(); });
+    for (let k = 0; k < 20; k++) {
+      const a = (k * TAU) / 20 + Math.PI / 20;
+      [157, 127].forEach((r) => { const x = Math.cos(a) * r, y = Math.sin(a) * r; circle(ctx, x, y, 2.4); ctx.fillStyle = "#8a7f76"; ctx.fill(); circle(ctx, x - 0.7, y - 0.7, 0.9); ctx.fillStyle = "#e0d6cc"; ctx.fill(); });
+    }
+    (M.vs.parts || []).forEach((p) => { const k = p.life / p.max; glow(ctx, p.x, p.y, p.s * 4, k < 0.3 ? "#ffe08a" : k < 0.7 ? "#ff8a2a" : "#d8341c", (1 - k) * 0.9); });
+    ctx.restore();
+    for (const i of M.order) {
+      const p = M.stag(i, 0.4), ee = M.closing ? 1 : ease.outBack(p, 1.5), h = M.hoverT[i], a = M.ang[i];
+      const x = Math.cos(a) * 142 + M.shk[i], y = Math.sin(a) * 142, sz = 54 * (1 + 0.14 * h) * (0.6 + 0.4 * Math.min(ee, 1));
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.7, 0, 1) * (M.closing ? t : 1);
+      glow(ctx, x, y, sz * 1.2, "#ff7a1a", 0.9 * h);
+      shapePath(ctx, "rsq", x, y + 3, sz); ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fill();
+      shapePath(ctx, "rsq", x, y, sz); ctx.fillStyle = "#1c1917"; ctx.fill();
+      drawIcon(ctx, i, x, y, sz - 11, "rsq");
+      drawCooldown(ctx, M, i, x, y, sz - 11, "rsq");
+      shapePath(ctx, "rsq", x, y, sz); ctx.lineWidth = 3; ctx.strokeStyle = mix("#7a6f66", "#ffb347", h); ctx.stroke();
+      const q = sz / 2 - 4.5;
+      [[-q, -q], [q, -q], [q, q], [-q, q]].forEach(([dx, dy]) => { circle(ctx, x + dx, y + dy, 1.8); ctx.fillStyle = h > 0.5 ? "#ffd38a" : "#9a8e84"; ctx.fill(); });
+      ctx.restore();
+    }
+    ctx.save(); ctx.globalAlpha = t;
+    const cg = ctx.createRadialGradient(-10, -14, 4, 0, 0, 60); cg.addColorStop(0, "#3a3330"); cg.addColorStop(1, "#171413");
+    circle(ctx, 0, 0, 58); ctx.fillStyle = cg; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#7a6e66"; ctx.stroke();
+    circle(ctx, 0, 0, 52); ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.stroke();
+    if (M.hover >= 0) {
+      const i = M.hover; ctx.globalAlpha = t * (0.35 + 0.65 * M.hoverT[i]);
+      fitText(ctx, SKILLS[i].name, 0, -8, { family: FONT.display, weight: 400, size: 18, min: 11, maxW: 92, color: "#ffd38a" });
+      fitText(ctx, statLine(i), 0, 21, { size: 11, weight: 500, color: "#e0a96a", maxW: 92 });
+    } else fitText(ctx, idleText(M), 0, 0, { family: FONT.display, weight: 400, size: 14, maxW: 86, color: "rgba(255,211,138,.72)" });
+    ctx.restore();
+    drawKnob(ctx, M, "#ff8a2a");
+  },
+});
+/* ============ app: settings, live stage, gesture state machine ============ */
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("radial." + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("radial." + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
+};
+const settings = Object.assign({ hold: 0, dead: 26, size: 100, bg: "game", keep: false, debug: false }, store.get("settings", {}));
+let vIndex = clamp(store.get("variant", 0) | 0, 0, VARIANTS.length - 1);
+
+const stageEl = document.getElementById("stage"), cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const ms = makeMenuState(), fx = [], cdEnd = new Float64Array(N);
+let view = null, W = 1, H = 1, dpr = 1, INS = { t: 0, r: 0, b: 0, l: 0 }, interacted = false, lastT = performance.now(), visible = true;
+const bgImg = new Image();
+bgImg.onload = () => renderThumbs();
+bgImg.src = "game-bg.jpg";
+
+const probe = document.createElement("div");
+probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)";
+document.body.append(probe);
+
+const curV = () => VARIANTS[vIndex];
+const curView = () => computeView(W, H, curV(), settings.size / 100, INS);
+function resize() {
+  const r = stageEl.getBoundingClientRect();
+  W = Math.max(1, r.width); H = Math.max(1, r.height); dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  if (stageEl.classList.contains("full")) {
+    const cs = getComputedStyle(probe);
+    INS = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+  } else INS = { t: 0, r: 0, b: 0, l: 0 };
+  ["t", "r", "b", "l"].forEach((k) => stageEl.style.setProperty("--i" + k, INS[k] + "px"));
+  view = curView();
+}
+new ResizeObserver(resize).observe(stageEl);
+new IntersectionObserver((en) => { visible = en[0].isIntersecting; }).observe(stageEl);
+
+function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) { /* not allowed in this frame */ } }
+const chatEl = document.getElementById("chat");
+function log(msg) {
+  const p = document.createElement("p"), k = document.createElement("span");
+  k.className = "k"; k.textContent = "[Система] "; p.append(k, msg); chatEl.append(p);
+  while (chatEl.children.length > 4) chatEl.firstChild.remove();
+  setTimeout(() => p.classList.add("out"), 6000);
+  setTimeout(() => p.remove(), 7000);
+}
+
+function openMenu(mode, now) {
+  if (ms.mode === "closed" || ms.mode === "closing" || ms.mode === "press") {
+    ms.openAt = now - (ms.mode === "closing" ? ms.raw * curV().L.openMs : 0);
+    ms.hover = -1; ms.castIndex = -1;
+    if (ms.mode !== "closing") ms.hoverT.fill(0);
+  }
+  ms.mode = mode; ms.cursor = mode === "drag" ? { x: 0, y: 0 } : null;
+}
+function closeMenu(now) {
+  if (ms.mode === "closed" || ms.mode === "closing") return;
+  ms.mode = "closing"; ms.closeAt = now; ms.closeFrom = ms.raw; ms.cursor = null; ms.stickyDrag = false;
+}
+function local(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function stickyZone(p) {
+  const v = view || curView(), L = curV().L, x = (p.x - v.c.x) / v.s, y = (p.y - v.c.y) / v.s, d = Math.hypot(x, y);
+  if (d < L.hit[0]) return { kind: "center" };
+  if (d > L.hit[1]) return { kind: "outside" };
+  const i = pickByAngle(L, Math.atan2(y, x));
+  return i < 0 ? { kind: "outside" } : { kind: "slot", i };
+}
+function targetPos(self) {
+  if (settings.bg !== "game") return { x: W * (self ? 0.5 : 0.36), y: H * (self ? 0.56 : 0.5) };
+  const sc = Math.max(W / 1280, H / 576), ox = (W - 1280 * sc) / 2, oy = H - 576 * sc, P = self ? [637, 318] : [478, 300];
+  return { x: ox + P[0] * sc, y: oy + P[1] * sc };
+}
+function cast(i, now, how) {
+  const sk = SKILLS[i];
+  if (cdEnd[i] > now) {
+    ms.shakeAt[i] = now; buzz([10, 40, 10]);
+    log(`«${sk.name}» ещё перезаряжается: ${Math.ceil((cdEnd[i] - now) / 1000)} с`);
+    if (ms.mode === "drag") { ms.mode = "sticky"; ms.cursor = null; }
+    ms.hover = -1;
+    return;
+  }
+  cdEnd[i] = now + sk.cd * 1000;
+  spawnFx(fx, i, targetPos(sk.self), now);
+  buzz(18);
+  const sec = ((now - ms.pressAt) / 1000).toFixed(2).replace(".", ",");
+  log(`Вы применили «${sk.name}» ${{ tap: "касанием", hold: `удержанием, ${sec} с`, flick: `взмахом, ${sec} с` }[how]}`);
+  ms.castIndex = i; ms.castAt = now;
+  if (settings.keep) { ms.mode = "sticky"; ms.cursor = null; ms.hover = -1; } else closeMenu(now);
+}
+
+cv.addEventListener("pointerdown", (e) => {
+  if (ms.pid !== null && ms.pid !== undefined) return; // one finger drives the menu; others are ignored
+  const now = performance.now(), p = local(e), v = view || curView();
+  const onTrig = Math.hypot(p.x - v.T.x, p.y - v.T.y) <= v.T.r * 1.35;
+  const grab = () => { ms.pid = e.pointerId; try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } };
+  if (ms.mode === "closed" || ms.mode === "closing") {
+    if (!onTrig) return;
+    e.preventDefault(); grab(); interacted = true;
+    ms.p0 = p; ms.pressAt = now; ms.leftDead = false; ms.fromSticky = false; ms.onTrig = true;
+    if (settings.hold === 0) openMenu("drag", now); else ms.mode = "press";
+    return;
+  }
+  if (ms.mode !== "sticky") return;
+  e.preventDefault(); grab();
+  if (onTrig) {
+    ms.p0 = p; ms.pressAt = now; ms.leftDead = false; ms.fromSticky = true; ms.onTrig = true;
+    ms.mode = "drag"; ms.cursor = { x: 0, y: 0 }; ms.hover = -1;
+    return;
+  }
+  const z = stickyZone(p);
+  if (z.kind === "slot") { ms.stickyDrag = true; ms.hover = z.i; ms.pressAt = now; buzz(6); }
+  else { ms.pid = null; closeMenu(now); }
+});
+cv.addEventListener("pointermove", (e) => {
+  if (e.pointerId !== ms.pid) return;
+  const now = performance.now(), p = local(e), v = view || curView();
+  if (ms.mode === "press") {
+    if (Math.hypot(p.x - ms.p0.x, p.y - ms.p0.y) <= 10) return;
+    openMenu("drag", now);
+  }
+  if (ms.mode === "drag") {
+    const dx = (p.x - ms.p0.x) / v.s, dy = (p.y - ms.p0.y) / v.s;
+    ms.cursor = { x: dx, y: dy };
+    let hv = -1;
+    if (Math.hypot(dx, dy) >= settings.dead) { ms.leftDead = true; hv = pickByAngle(curV().L, Math.atan2(dy, dx)); }
+    if (hv !== ms.hover) { ms.hover = hv; if (hv >= 0) buzz(6); }
+  } else if (ms.mode === "sticky" && ms.stickyDrag) {
+    const z = stickyZone(p), hv = z.kind === "slot" ? z.i : -1;
+    if (hv !== ms.hover) { ms.hover = hv; if (hv >= 0) buzz(6); }
+  }
+});
+function onUp(e, cancelled) {
+  if (e.pointerId !== ms.pid) return;
+  const now = performance.now();
+  ms.pid = null; ms.onTrig = false;
+  try { cv.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  if (ms.mode === "press") { if (cancelled) ms.mode = "closed"; else openMenu("sticky", now); return; }
+  if (ms.mode === "drag") {
+    if (!cancelled && ms.hover >= 0) { cast(ms.hover, now, now - ms.pressAt < 350 ? "flick" : "hold"); return; }
+    if (!cancelled && !ms.leftDead && !ms.fromSticky) { ms.mode = "sticky"; ms.cursor = null; ms.hover = -1; return; }
+    if (!cancelled && ms.leftDead) log("Отмена: палец вернулся в центр");
+    closeMenu(now);
+    return;
+  }
+  if (ms.mode === "sticky" && ms.stickyDrag) {
+    ms.stickyDrag = false;
+    const z = stickyZone(local(e));
+    if (!cancelled && z.kind === "slot" && z.i === ms.hover) cast(z.i, now, "tap"); else ms.hover = -1;
+  }
+}
+cv.addEventListener("pointerup", (e) => onUp(e, false));
+cv.addEventListener("pointercancel", (e) => onUp(e, true));
+cv.addEventListener("contextmenu", (e) => e.preventDefault());
+
+function tick(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  const L = curV().L, sp = reduceMotion ? 0.35 : 1;
+  if (ms.mode === "press" && now - ms.pressAt >= settings.hold) { openMenu("drag", now); buzz(12); }
+  if (ms.mode === "drag" || ms.mode === "sticky") ms.raw = clamp((now - ms.openAt) / (L.openMs * sp), 0, 1);
+  else if (ms.mode === "closing") {
+    ms.raw = ms.closeFrom * (1 - clamp((now - ms.closeAt) / (L.closeMs * sp), 0, 1));
+    if (ms.raw <= 0) { ms.mode = "closed"; ms.raw = 0; ms.castIndex = -1; ms.hover = -1; }
+  }
+  const k = 1 - Math.exp(-dt * 16);
+  for (let i = 0; i < N; i++) ms.hoverT[i] += ((i === ms.hover ? 1 : 0) - ms.hoverT[i]) * k;
+  ms.any += ((ms.hover >= 0 ? 1 : 0) - ms.any) * k;
+  ms.pressed += ((ms.onTrig ? 1 : 0) - ms.pressed) * (1 - Math.exp(-dt * 30));
+  if (visible || ms.mode !== "closed") {
+    view = curView();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const hold = ms.mode === "press" && settings.hold > 0 ? clamp((now - ms.pressAt) / settings.hold, 0, 1) : 0;
+    try {
+      renderScene(ctx, view, curV(), ms, now, { dt, dead: settings.dead, cdEnd, fx, hold, debug: settings.debug, hint: !interacted, reduce: reduceMotion });
+    } catch (err) {
+      // keep the loop alive and reset any half-applied canvas state (clip, alpha, transform)
+      if (!tick.failed) { tick.failed = true; console.error(err); }
+      cv.width = cv.width;
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ============ variant switching, settings, fullscreen ============ */
+const vnameEl = document.getElementById("vname");
+function setVariant(k, opts = {}) {
+  vIndex = (k + VARIANTS.length) % VARIANTS.length; store.set("variant", vIndex);
+  ms.mode = "closed"; ms.raw = 0; ms.hover = -1; ms.hoverT.fill(0); ms.vs = {}; ms.pid = null; ms.cursor = null; ms.castIndex = -1;
+  const n = document.createElement("span"); n.textContent = `${vIndex + 1}/${VARIANTS.length}`;
+  vnameEl.replaceChildren(n, VARIANTS[vIndex].name);
+  document.querySelectorAll(".card").forEach((c, j) => c.setAttribute("aria-pressed", String(j === vIndex)));
+  renderParams();
+  view = curView();
+  if (opts.scroll) stageEl.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+  if (opts.preview) openMenu("sticky", performance.now());
+}
+document.getElementById("prev").onclick = () => setVariant(vIndex - 1, { preview: true });
+document.getElementById("next").onclick = () => setVariant(vIndex + 1, { preview: true });
+
+function bindSeg(id, key, parse) {
+  const el = document.getElementById(id);
+  const sync = () => el.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(parse(b.dataset.v) === settings[key])));
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    settings[key] = parse(b.dataset.v); store.set("settings", settings); sync(); applySettings();
+  });
+  sync();
+}
+function bindRange(id, key, fmt) {
+  const el = document.getElementById(id), out = document.getElementById(id + "Out");
+  el.value = settings[key]; out.textContent = fmt(settings[key]);
+  el.addEventListener("input", () => { settings[key] = +el.value; out.textContent = fmt(settings[key]); store.set("settings", settings); view = curView(); });
+}
+function bindCheck(id, key) {
+  const el = document.getElementById(id); el.checked = !!settings[key];
+  el.addEventListener("change", () => { settings[key] = el.checked; store.set("settings", settings); });
+}
+let lastBg = null;
+function applySettings() {
+  stageEl.classList.toggle("dark", settings.bg === "dark");
+  if (lastBg !== settings.bg) { lastBg = settings.bg; renderThumbs(); }
+}
+bindSeg("hold", "hold", Number);
+bindSeg("bgSeg", "bg", String);
+bindRange("dead", "dead", (v) => `${v}`);
+bindRange("size", "size", (v) => `${v}%`);
+bindCheck("keep", "keep");
+bindCheck("debug", "debug");
+
+const fsBtn = document.getElementById("fs");
+function setFull(on) {
+  stageEl.classList.toggle("full", on); document.body.classList.toggle("noscroll", on);
+  fsBtn.textContent = on ? "✕" : "⤢"; fsBtn.setAttribute("aria-label", on ? "Свернуть" : "Во весь экран"); fsBtn.title = fsBtn.getAttribute("aria-label");
+  try {
+    if (on && document.documentElement.requestFullscreen && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen({ navigationUI: "hide" })
+        .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape").catch(() => {}))
+        .catch(() => {});
+    } else if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  } catch (err) { /* fullscreen not allowed here; the CSS full mode still works */ }
+  requestAnimationFrame(resize);
+}
+fsBtn.onclick = () => setFull(!stageEl.classList.contains("full"));
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && stageEl.classList.contains("full")) setFull(false); });
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest && e.target.closest("input")) return;
+  const now = performance.now();
+  if (e.key === "Escape") { if (ms.mode === "sticky") closeMenu(now); else if (stageEl.classList.contains("full")) setFull(false); }
+  else if (e.key === "ArrowRight") setVariant(vIndex + 1, { preview: true });
+  else if (e.key === "ArrowLeft") setVariant(vIndex - 1, { preview: true });
+  else if (/^[0-9]$/.test(e.key) && ms.mode === "sticky") { const i = (+e.key + 9) % 10; ms.hover = i; cast(i, now, "tap"); }
+  else if ((e.key === "Enter" || e.key === " ") && e.target === stageEl) {
+    e.preventDefault(); interacted = true;
+    if (ms.mode === "sticky") closeMenu(now); else { ms.pressAt = now; openMenu("sticky", now); }
+  }
+});
+
+/* ============ gallery thumbnails ============ */
+const cardsEl = document.getElementById("cards");
+VARIANTS.forEach((Vv, k) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "card"; b.id = "card-" + Vv.key; b.setAttribute("aria-pressed", "false");
+  const c = document.createElement("canvas"); c.setAttribute("aria-hidden", "true");
+  const h = document.createElement("h3"), n = document.createElement("span");
+  n.className = "n"; n.textContent = String(k + 1).padStart(2, "0"); h.append(n, Vv.name);
+  const p = document.createElement("p"); p.textContent = Vv.desc;
+  const tg = document.createElement("div"); tg.className = "tags";
+  Vv.tags.forEach((t) => { const s = document.createElement("span"); s.className = "tag"; s.textContent = t; tg.append(s); });
+  b.append(c, h, p, tg);
+  b.addEventListener("click", () => setVariant(k, { scroll: true, preview: true }));
+  cardsEl.append(b);
+});
+function drawBackground(g, w, h) {
+  if (settings.bg === "game" && bgImg.complete && bgImg.naturalWidth) {
+    const sc = Math.max(w / 1280, h / 576);
+    g.drawImage(bgImg, (w - 1280 * sc) / 2, h - 576 * sc, 1280 * sc, 576 * sc);
+  } else {
+    const gr = g.createRadialGradient(w / 2, h, 10, w / 2, h, Math.max(w, h));
+    gr.addColorStop(0, "#2b3039"); gr.addColorStop(0.55, "#15181d"); gr.addColorStop(1, "#0b0d10");
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  }
+}
+function renderThumbs() {
+  document.querySelectorAll(".card canvas").forEach((c, k) => {
+    const r = c.getBoundingClientRect();
+    if (!r.width) return;
+    const d = Math.min(window.devicePixelRatio || 1, 2), w = r.width, h = r.height;
+    c.width = Math.round(w * d); c.height = Math.round(h * d);
+    const g = c.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0);
+    drawBackground(g, w, h);
+    const Vv = VARIANTS[k], tv = computeView(w, h, Vv, 1, { t: 6, r: 6, b: 4, l: 6 }, true);
+    const st = makeMenuState(), hv = Vv.thumbHover ?? 1; st.mode = "sticky"; st.raw = 1; st.hover = hv; st.hoverT[hv] = 1; st.any = 1;
+    const cds = new Float64Array(N); cds[7] = 4000 + 0.6 * SKILLS[7].cd * 1000;
+    renderScene(g, tv, Vv, st, 4000, { dt: 1 / 30, dead: settings.dead, cdEnd: cds, presim: 50, reduce: true });
+  });
+}
+let thumbTimer = 0;
+new ResizeObserver(() => { clearTimeout(thumbTimer); thumbTimer = setTimeout(renderThumbs, 150); }).observe(cardsEl);
+
+/* ============ Godot notes ============ */
+const deg = (r) => Math.round((r * 180) / Math.PI);
+function gdNum(x) { return Number.isInteger(x) ? x.toFixed(1) : String(+x.toFixed(3)); }
+function gdPreset(Vv) {
+  const L = Vv.L;
+  return [
+    `# ${Vv.name}`,
+    `const PRESET_${Vv.key.toUpperCase()} := {`,
+    `\t"style": "${Vv.key}",`,
+    `\t"layout": "${L.type}",  # ring | arc | star | gauge`,
+    `\t"anchor": "${L.anchor}",  # above = над кнопкой, trigger = вокруг кнопки`,
+    `\t"radius": ${gdNum(L.R)},`,
+    L.R2 ? `\t"radius_outer": ${gdNum(L.R2)},` : null,
+    `\t"slot_size": ${gdNum(L.slot)},`,
+    `\t"start_deg": ${gdNum(deg(L.start))},`,
+    L.sweep ? `\t"sweep_deg": ${gdNum(deg(L.sweep))},` : null,
+    L.lift ? `\t"lift": ${gdNum(L.lift)},` : null,
+    `\t"hit_band": Vector2(${gdNum(L.hit[0])}, ${gdNum(L.hit[1])}),`,
+    `\t"open_time": ${gdNum(L.openMs / 1000)},`,
+    `\t"close_time": ${gdNum(L.closeMs / 1000)},`,
+    `\t"dim": ${gdNum(Vv.dim ?? 0.3)},`,
+    `\t"colors": [`,
+    ...Object.entries(Vv.pal).filter(([, v]) => v.startsWith("#")).map(([k, v]) => `\t\tColor("${v}"),  # ${k}`),
+    `\t],`,
+    `}`,
+  ].filter(Boolean).join("\n");
+}
+function renderParams() {
+  const Vv = curV(), L = Vv.L, el = document.getElementById("params");
+  const rows = [
+    ["Раскладка", { ring: "кольцо", arc: "дуга-веер", star: "звезда, два радиуса", gauge: "шкала" }[L.type]],
+    ["Центр меню", L.anchor === "trigger" ? "в самой кнопке" : `над кнопкой, на ${L.lift ?? 44 + (L.lowExt ?? L.ext)} выше`],
+    ["Радиус ячеек", L.type === "star" ? `${L.R} / ${L.R2}` : `${L.R}`],
+    ["Размер ячейки", `${L.slot}`],
+    ["Сектор на умение", L.sweep ? `${(L.sweep / (N - 1) * 180 / Math.PI).toFixed(1)}°` : "36°"],
+    ["Первая ячейка", `${deg(L.start)}°`],
+    L.sweep ? ["Охват", `${deg(L.sweep)}°`] : null,
+    ["Зона тапа, радиусы", `${L.hit[0]}–${L.hit[1]}`],
+    ["Открытие / закрытие", `${L.openMs} / ${L.closeMs} мс`],
+    ["Затемнение фона", `${Math.round((Vv.dim ?? 0.3) * 100)}%`],
+  ].filter(Boolean);
+  const colorRows = Object.entries(Vv.pal).map(([k, v]) => [k, v.startsWith("#") ? `<span class="sw" style="background:${v}"></span>${v}` : v]);
+  el.innerHTML = `<h3>Вариант ${vIndex + 1}: ${Vv.name}</h3>
+    <p>Размеры — в пикселях экрана высотой 576 px, как на вашем скриншоте. В Godot умножайте их на <code>ui_scale = высота_экрана / 576</code>.</p>
+    <table class="params"><tbody>${rows.concat(colorRows).map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")}</tbody></table>
+    <div class="row"><b>Пресет для GDScript</b><button class="btn" type="button" id="copyPreset">Скопировать</button></div>
+    <pre id="preset" tabindex="0"></pre>`;
+  const pre = document.getElementById("preset");
+  pre.textContent = gdPreset(Vv);
+  document.getElementById("copyPreset").addEventListener("click", (e) => {
+    const btn = e.currentTarget, done = (t) => { btn.textContent = t; setTimeout(() => (btn.textContent = "Скопировать"), 1600); };
+    const sel = () => { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); done("Выделено — нажмите Ctrl+C"); };
+    try { navigator.clipboard.writeText(pre.textContent).then(() => done("Скопировано"), sel); } catch (err) { sel(); }
+  });
+}
+document.getElementById("gdMath").textContent = [
+  "# Направление пальца → номер умения (кольцо из 10, ячейка 0 сверху)",
+  "func pick_slot(v: Vector2) -> int:  # v = (палец - p0) / ui_scale",
+  "\tif v.length() < dead_zone:",
+  "\t\treturn -1  # мёртвая зона: ничего не выбрано",
+  "\tvar step := TAU / 10.0",
+  "\tvar a := fposmod(v.angle() - start_angle + step * 0.5, TAU)",
+  "\treturn int(a / step) % 10",
+  "",
+  "# Дуга или шкала: вне охвата — -1",
+  "func pick_on_arc(v: Vector2) -> int:",
+  "\tvar step := sweep / 9.0",
+  "\tvar rel := wrapf(v.angle() - (start_angle + sweep * 0.5), -PI, PI) + sweep * 0.5",
+  "\tif rel < -step * 0.5 or rel > sweep + step * 0.5:",
+  "\t\treturn -1",
+  "\treturn clampi(roundi(rel / step), 0, 9)",
+].join("\n");
+
+/* ============ boot ============ */
+resize();
+applySettings();
+setVariant(vIndex);
+requestAnimationFrame((t) => { lastT = t; tick(t); });
+if (document.fonts) {
+  ["16px Forum", "600 16px 'Golos Text'", "700 16px 'Exo 2'"].forEach((f) => document.fonts.load(f).catch(() => {}));
+  document.fonts.ready.then(renderThumbs);
+}
+renderThumbs();
+</script>
+</html>
