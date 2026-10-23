@@ -12,18 +12,25 @@ signal skill_refused(index: int, seconds_left: float)
 signal menu_opened(sticky: bool)
 signal menu_closed
 
-enum Style { BRONZE, SECTOR, FAN, ARCANE, HEX, NEON, STAR, PARCHMENT, DIAL, EMBER }
+enum Style {
+	BRONZE, SECTOR, FAN, ARCANE, HEX, NEON, STAR, PARCHMENT, DIAL, EMBER,
+	HALO, ARCH, FLOWER, ORBIT, SHIELD, GLASS, GEARS, BUBBLES, INK, CLEAN,
+}
 enum Mode { CLOSED, PRESS, DRAG, STICKY, CLOSING }
 
 const STYLE_NAMES := [
 	"Бронзовый круг", "Колесо секторов", "Веер над кнопкой", "Магический круг", "Соты",
 	"Неон", "Королевская звезда", "Пергамент", "Циферблат", "Кузнечное пламя",
+	"Ореол", "Каменная арка", "Цветок", "Орбита", "Щит викинга",
+	"Витраж", "Шестерни", "Пузыри", "Тушь", "Минимал",
 ]
 const COUNT := 10
 const RING := 0
 const ARC := 1
 const STAR := 2
 const GAUGE := 3
+const ELLIPSE := 4
+const TIERS := 5
 const SH_CIRCLE := 0
 const SH_DIAMOND := 1
 const SH_HEX := 2
@@ -67,8 +74,8 @@ const SILVER_LO := Color("4b5059")
 @export var auto_cooldown := true
 ## Рисовать мёртвую зону и границы секторов.
 @export var show_zones := false
-## Расстояние от нижнего края до центра кнопки, в единицах дизайна.
-@export var trigger_bottom := 50.0
+## Расстояние от нижнего края до центра кнопки, в единицах дизайна (-1 — как задано в стиле).
+@export var trigger_bottom := -1.0
 @export var vibrate := true
 
 
@@ -90,6 +97,11 @@ class Layout:
 	var open_t := 0.26
 	var close_t := 0.17
 	var dim := 0.3
+	var tb := 50.0
+	var rx := 0.0
+	var ry := 0.0
+	var pts := PackedVector2Array()
+	var tap_r := 34.0
 
 	func _init(p_kind: int, p_r: float, p_slot: float, p_ext: float, p_hit: Vector2, p_open: float, p_close: float, p_dim: float) -> void:
 		kind = p_kind
@@ -145,12 +157,15 @@ var _cur := Transform2D.IDENTITY
 var _ga := 1.0
 var _ang := PackedFloat32Array()
 var _rad := PackedFloat32Array()
+var _par := PackedFloat32Array()
+var _pos := PackedVector2Array()
 
 var _needle := -PI / 2.0
 var _needle_v := 0.0
 var _embers: Array[Ember] = []
 var _ember_acc := 0.0
 var _parch_spots := PackedVector3Array()
+var _orbit_stars := PackedVector3Array()
 var _glow_tex: GradientTexture2D
 var _font: Font
 
@@ -165,12 +180,18 @@ func _init() -> void:
 	_cd_total.fill(1.0)
 	_ang.resize(COUNT)
 	_rad.resize(COUNT)
+	_par.resize(COUNT)
+	_pos.resize(COUNT)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1234567
 	for k in 46:
 		var a := rng.randf() * TAU
 		var d := sqrt(rng.randf()) * 170.0
 		_parch_spots.append(Vector3(cos(a) * d, sin(a) * d, rng.randf_range(8.0, 34.0)))
+	for k in 46:
+		var a2 := fmod(k * 2.399, TAU)
+		var d2 := sqrt(float((k * 7919) % 97) / 97.0)
+		_orbit_stars.append(Vector3(cos(a2) * d2 * 222.0, sin(a2) * d2 * 132.0, 0.6 + float((k * 13) % 7) / 6.0))
 
 
 func _ready() -> void:
@@ -211,7 +232,7 @@ func cooldown_left(index: int) -> float:
 
 func _make_layouts() -> Array:
 	var a: Array = []
-	a.resize(COUNT)
+	a.resize(Style.size())
 	a[Style.BRONZE] = Layout.new(RING, 142, 58, 192, Vector2(66, 204), 0.26, 0.17, 0.3)
 	var sector := Layout.new(RING, 124, 46, 194, Vector2(58, 204), 0.23, 0.15, 0.38)
 	sector.r_in = 64.0
@@ -238,7 +259,55 @@ func _make_layouts() -> Array:
 	dial.tol = 0.3
 	a[Style.DIAL] = dial
 	a[Style.EMBER] = Layout.new(RING, 142, 54, 198, Vector2(62, 206), 0.30, 0.18, 0.36)
+	# --- the menu opens around the button itself
+	a[Style.HALO] = _around(Layout.new(RING, 104, 50, 172, Vector2(36, 156), 0.36, 0.17, 0.3), 142, 136)
+	var arch := _around(Layout.new(ARC, 158, 42, 258, Vector2(40, 214), 0.44, 0.17, 0.26), 50, 214)
+	arch.start = PI + PI / 20.0
+	arch.sweep = PI * 0.9
+	arch.tol = 0.4
+	arch.r_in = 112.0
+	arch.r_out = 204.0
+	a[Style.ARCH] = arch
+	var flower := _around(Layout.new(GAUGE, 116, 44, 224, Vector2(36, 180), 0.48, 0.17, 0.24), 112, 178)
+	flower.start = PI * 5.0 / 6.0
+	flower.sweep = PI * 4.0 / 3.0
+	flower.tol = 0.26
+	a[Style.FLOWER] = flower
+	var orbit := _around(Layout.new(ELLIPSE, 184, 46, 172, Vector2(36, 150), 0.54, 0.18, 0.4), 136, 216)
+	orbit.rx = 184.0
+	orbit.ry = 104.0
+	a[Style.ORBIT] = orbit
+	var shield := _around(Layout.new(RING, 86, 40, 180, Vector2(36, 146), 0.38, 0.17, 0.3), 146, 140)
+	shield.r_in = 38.0
+	shield.r_out = 124.0
+	a[Style.SHIELD] = shield
+	a[Style.GLASS] = _around(Layout.new(RING, 90, 38, 188, Vector2(36, 150), 0.48, 0.17, 0.42), 150, 150)
+	a[Style.GEARS] = _around(Layout.new(RING, 104, 40, 194, Vector2(36, 150), 0.56, 0.18, 0.34), 150, 196)
+	var bubbles := _around(Layout.new(TIERS, 172, 50, 250, Vector2(38, 230), 0.46, 0.17, 0.28), 50, 206)
+	for d in [202.5, 247.5, 292.5, 337.5]:
+		bubbles.pts.append(Vector2.from_angle(deg_to_rad(d)) * 96.0)
+	for d in [195.0, 225.0, 255.0, 285.0, 315.0, 345.0]:
+		bubbles.pts.append(Vector2.from_angle(deg_to_rad(d)) * 172.0)
+	a[Style.BUBBLES] = bubbles
+	var ink := _around(Layout.new(GAUGE, 112, 42, 182, Vector2(36, 160), 0.56, 0.17, 0.22), 132, 170)
+	ink.start = PI * 2.0 / 3.0
+	ink.sweep = PI * 5.0 / 3.0
+	ink.tol = 0.25
+	a[Style.INK] = ink
+	var clean := _around(Layout.new(ARC, 104, 46, 236, Vector2(36, 214), 0.38, 0.16, 0.42), 50, 200)
+	clean.r2 = 166.0
+	clean.start = PI + PI / 20.0
+	clean.sweep = PI * 0.9
+	clean.tol = 0.4
+	a[Style.CLEAN] = clean
 	return a
+
+
+func _around(lay: Layout, tb: float, wext: float) -> Layout:
+	lay.on_trigger = true
+	lay.tb = tb
+	lay.wext = wext
+	return lay
 
 
 func _layout() -> Layout:
@@ -246,7 +315,7 @@ func _layout() -> Layout:
 
 
 func _slot_angle(lay: Layout, i: int) -> float:
-	if lay.kind == RING or lay.kind == STAR:
+	if lay.kind != ARC and lay.kind != GAUGE:
 		return lay.start + i * TAU / COUNT
 	return lay.start + i * lay.sweep / (COUNT - 1)
 
@@ -254,7 +323,7 @@ func _slot_angle(lay: Layout, i: int) -> float:
 ## Направление (угол вектора от точки касания) → номер умения или -1.
 func _pick(a: float) -> int:
 	var lay := _layout()
-	if lay.kind == RING or lay.kind == STAR:
+	if lay.kind != ARC and lay.kind != GAUGE:
 		var step := TAU / COUNT
 		return int(fposmod(a - lay.start + step * 0.5, TAU) / step) % COUNT
 	var step2 := lay.sweep / (COUNT - 1)
@@ -265,13 +334,49 @@ func _pick(a: float) -> int:
 	return clampi(roundi(rel / step2), 0, COUNT - 1)
 
 
+## Базовая позиция ячейки относительно центра меню.
+func _slot_pos(lay: Layout, i: int) -> Vector2:
+	if lay.kind == TIERS:
+		return lay.pts[i]
+	var a := _slot_angle(lay, i)
+	if lay.kind == ELLIPSE:
+		return Vector2(cos(a) * lay.rx, sin(a) * lay.ry)
+	return Vector2.from_angle(a) * (lay.r2 if (lay.r2 > 0.0 and i % 2 == 1) else lay.r)
+
+
+## Смещение пальца (в единицах дизайна) → номер умения. Два ряда выбирают ближайшую ячейку.
+func _pick_vec(v: Vector2) -> int:
+	var lay := _layout()
+	if lay.kind == TIERS:
+		var best := -1
+		var bd := INF
+		for i in lay.pts.size():
+			var d := v.distance_to(lay.pts[i])
+			if d < bd:
+				bd = d
+				best = i
+		return best
+	if lay.kind == ELLIPSE:
+		return _pick(atan2(v.y / lay.ry, v.x / lay.rx))
+	return _pick(v.angle())
+
+
+func _band_dist(lay: Layout, v: Vector2) -> float:
+	if lay.kind == ELLIPSE:
+		return Vector2(v.x / lay.rx, v.y / lay.ry).length() * 100.0
+	return v.length()
+
+
 func _sticky_zone(p: Vector2) -> int:
 	var lay := _layout()
 	var v := (p - _center) / _s
-	var d := v.length()
+	if lay.kind == TIERS:
+		var k := _pick_vec(v)
+		return k if v.distance_to(lay.pts[k]) <= lay.tap_r else -1
+	var d := _band_dist(lay, v)
 	if d < lay.hit.x or d > lay.hit.y:
 		return -1
-	return _pick(v.angle())
+	return _pick_vec(v)
 
 
 func _update_view() -> void:
@@ -280,16 +385,20 @@ func _update_view() -> void:
 	if not lay.on_trigger:
 		lift = lay.lift if lay.lift > 0.0 else 44.0 + lay.ext
 	var need_w := 2.0 * (lay.wext if lay.wext > 0.0 else lay.ext) + 16.0
-	var need_h := 50.0 + lift + lay.ext + 10.0
+	var tb := trigger_bottom if trigger_bottom >= 0.0 else lay.tb
+	var need_h := tb + lift + lay.ext + 10.0
 	_s = clampf(minf(size.y / 576.0, minf(size.x / need_w, size.y / need_h)), 0.3, 1.7) * size_mul
-	_trig = Vector2(size.x * 0.5, size.y - trigger_bottom * _s)
+	_trig = Vector2(size.x * 0.5, size.y - tb * _s)
 	_center = _trig - Vector2(0.0, lift * _s)
 	if not lay.on_trigger:
 		_center.y = maxf(_center.y, lay.ext * _s + 4.0)
 	_mx = Transform2D(0.0, Vector2(_s, _s), 0.0, _center)
 	for i in COUNT:
-		_ang[i] = _slot_angle(lay, i)
-		_rad[i] = lay.r2 if (lay.kind == STAR and i % 2 == 1) else lay.r
+		var q := _slot_pos(lay, i)
+		_pos[i] = q
+		_par[i] = _slot_angle(lay, i)
+		_rad[i] = q.length()
+		_ang[i] = q.angle() if (lay.kind == TIERS or lay.kind == ELLIPSE) else _par[i]
 
 
 func _reset_style_state() -> void:
@@ -386,7 +495,7 @@ func _on_move(p: Vector2) -> void:
 		var hv := -1
 		if v.length() >= dead_zone:
 			_left_dead = true
-			hv = _pick(v.angle())
+			hv = _pick_vec(v)
 		_set_hover(hv)
 	elif _mode == Mode.STICKY and _sticky_drag:
 		_set_hover(_sticky_zone(p))
@@ -516,7 +625,10 @@ func _update_style(delta: float) -> void:
 			target = _cursor.angle()
 		_needle_v += (wrapf(target - _needle, -PI, PI) * 170.0 - _needle_v * 15.0) * delta
 		_needle += _needle_v * delta
-	elif style == Style.EMBER and _mode != Mode.CLOSED:
+		return
+	if _mode == Mode.CLOSED or (style != Style.EMBER and style != Style.BUBBLES):
+		return
+	if style == Style.EMBER:
 		_ember_acc += delta * 42.0 * _t()
 		while _ember_acc > 1.0:
 			_ember_acc -= 1.0
@@ -530,16 +642,22 @@ func _update_style(delta: float) -> void:
 					break
 				n -= 1.0
 				_spawn_ember(base + Vector2(randf_range(-17.0, 17.0), randf_range(-17.0, 17.0)), Vector2(randf_range(-15.0, 15.0), randf_range(-100.0, -40.0)), randf_range(0.5, 1.2), randf_range(1.6, 4.0))
-		for k in range(_embers.size() - 1, -1, -1):
-			var e := _embers[k]
-			e.life += delta
-			if e.life > e.max_life:
-				_embers.remove_at(k)
-				continue
-			e.pos += e.vel * delta
+	else:
+		_ember_acc += delta * 10.0 * _t()
+		while _ember_acc > 1.0:
+			_ember_acc -= 1.0
+			_spawn_ember(Vector2(randf_range(-25.0, 25.0), -24.0), Vector2(0.0, randf_range(-80.0, -30.0)), randf_range(1.5, 3.0), randf_range(1.5, 4.5))
+	for k in range(_embers.size() - 1, -1, -1):
+		var e := _embers[k]
+		e.life += delta
+		if e.life > e.max_life:
+			_embers.remove_at(k)
+			continue
+		e.pos += e.vel * delta
+		if style == Style.EMBER:
 			e.vel.x += randf_range(-20.0, 20.0) * delta
-		while _embers.size() > 260:
-			_embers.remove_at(0)
+	while _embers.size() > 260:
+		_embers.remove_at(0)
 
 
 func _spawn_ember(pos: Vector2, vel: Vector2, life: float, sz: float) -> void:
@@ -561,14 +679,9 @@ func _draw() -> void:
 	_ga = 1.0
 	if shown:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.016, 0.024, 0.04, lay.dim * t))
-	var ps := 1.0 - 0.08 * _pressed
-	_xf(Transform2D(0.0, Vector2(_s * ps, _s * ps), 0.0, _trig))
-	_draw_trigger(t)
-	_xf(Transform2D(0.0, Vector2(_s, _s), 0.0, _trig))
-	_ga = 1.0
-	_hold_ring()
-	if not _interacted:
-		_draw_hint()
+	var on_top := shown and lay.on_trigger
+	if not on_top:
+		_draw_button(t)
 	if shown:
 		_xf(_mx)
 		_ga = 1.0
@@ -593,11 +706,44 @@ func _draw() -> void:
 				_draw_dial()
 			Style.EMBER:
 				_draw_ember()
+			Style.HALO:
+				_draw_halo()
+			Style.ARCH:
+				_draw_arch()
+			Style.FLOWER:
+				_draw_flower()
+			Style.ORBIT:
+				_draw_orbit()
+			Style.SHIELD:
+				_draw_shield()
+			Style.GLASS:
+				_draw_glass()
+			Style.GEARS:
+				_draw_gears()
+			Style.BUBBLES:
+				_draw_bubbles()
+			Style.INK:
+				_draw_ink()
+			Style.CLEAN:
+				_draw_clean()
 		_xf(_mx)
 		_draw_cast_flash()
 		if show_zones:
 			_draw_zones()
+	if on_top:
+		_draw_button(t)
 	_xf(Transform2D.IDENTITY)
+
+
+func _draw_button(t: float) -> void:
+	var ps := 1.0 - 0.08 * _pressed
+	_xf(Transform2D(0.0, Vector2(_s * ps, _s * ps), 0.0, _trig))
+	_draw_trigger(t)
+	_xf(Transform2D(0.0, Vector2(_s, _s), 0.0, _trig))
+	_ga = 1.0
+	_hold_ring()
+	if not _interacted:
+		_draw_hint()
 
 
 func _t() -> float:
@@ -806,11 +952,11 @@ func _band_pts(r: float, w: float, a0: float, a1: float) -> PackedVector2Array:
 	return pts
 
 
-func _wobble_pts(p: Vector2, r: float, seed_v: float) -> PackedVector2Array:
+func _wobble_pts(p: Vector2, r: float, seed_v: float, n: int = 18, amp: float = 0.07) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-	for k in 18:
-		var a := TAU * k / 18.0
-		pts.append(p + Vector2.from_angle(a) * r * (1.0 + 0.07 * sin(k * 2.3 + seed_v)))
+	for k in n:
+		var a := TAU * k / n
+		pts.append(p + Vector2.from_angle(a) * r * (1.0 + amp * sin(k * 2.3 + seed_v)))
 	return pts
 
 
@@ -923,9 +1069,9 @@ func _knob(c: Color, r: float = 6.0) -> void:
 		return
 	var lay := _layout()
 	var k := _cursor
-	var lim := lay.r2 if lay.r2 > 0.0 else lay.r
-	if k.length() > lim:
-		k = k.normalized() * lim
+	var n := Vector2(k.x / lay.rx, k.y / lay.ry).length() if lay.kind == ELLIPSE else k.length() / (lay.r2 if lay.r2 > 0.0 else lay.r)
+	if n > 1.0:
+		k /= n
 	if k.length() < 2.0:
 		return
 	_ga = _t()
@@ -977,8 +1123,26 @@ func _accent() -> Color:
 			return Color("fff0b8")
 		Style.PARCHMENT:
 			return Color("ffd9a0")
-		Style.EMBER:
+		Style.EMBER, Style.GEARS:
 			return Color("ffb347")
+		Style.HALO:
+			return Color("fff3c4")
+		Style.ARCH:
+			return Color("6fe3ff")
+		Style.FLOWER:
+			return Color("ffd1e6")
+		Style.ORBIT:
+			return Color("ffd27a")
+		Style.SHIELD:
+			return Color("f3c26a")
+		Style.GLASS:
+			return Color("fff1c8")
+		Style.BUBBLES:
+			return Color("9fe8ff")
+		Style.INK:
+			return Color("c8321e")
+		Style.CLEAN:
+			return Color("3d7bfd")
 	return Color("ffe3a0")
 
 
@@ -1078,6 +1242,8 @@ func _draw_trigger(open_t: float) -> void:
 			for k in 8:
 				_circ(Vector2.from_angle(k * TAU / 8.0 + PI / 8.0) * 26.0, 1.8, Color("9a8e84"))
 			_wheel_glyph(Color("ffb347"), open_t, 13.0)
+		_:
+			_draw_trigger_around(open_t, pu, ga)
 
 
 func _draw_hint() -> void:
@@ -1096,9 +1262,23 @@ func _draw_zones() -> void:
 	_ga = 1.0
 	_circ(Vector2.ZERO, dead_zone, Color(1, 0.3, 0.3, 0.18))
 	_ring(Vector2.ZERO, dead_zone, 1.0, Color(1, 0.47, 0.47, 0.9))
+	if lay.kind == TIERS:
+		for q in lay.pts:
+			_ring(q, lay.tap_r, 1.0, Color(0.47, 0.86, 1, 0.8))
+		return
+	if lay.kind == ELLIPSE:
+		for b in [lay.hit.x, lay.hit.y]:
+			draw_polyline(_ellipse_pts(lay.rx * b / 100.0, lay.ry * b / 100.0, 0.0, TAU, 64), _col(Color(0.47, 0.86, 1, 0.8)), 1.0, true)
+		var el := PackedVector2Array()
+		for i in COUNT:
+			var a := _par[i] - PI / COUNT
+			el.append(Vector2(cos(a) * lay.rx * 0.3, sin(a) * lay.ry * 0.3))
+			el.append(Vector2(cos(a) * lay.rx * lay.hit.y / 100.0, sin(a) * lay.ry * lay.hit.y / 100.0))
+		draw_multiline(el, _col(Color(1, 1, 1, 0.55)), 1.0)
+		return
 	_ring(Vector2.ZERO, lay.hit.x, 1.0, Color(0.47, 0.86, 1, 0.8))
 	_ring(Vector2.ZERO, lay.hit.y, 1.0, Color(0.47, 0.86, 1, 0.8))
-	var half := (TAU / COUNT if lay.kind == RING or lay.kind == STAR else lay.sweep / (COUNT - 1)) * 0.5
+	var half := (lay.sweep / (COUNT - 1) if lay.kind == ARC or lay.kind == GAUGE else TAU / COUNT) * 0.5
 	var lines := PackedVector2Array()
 	for i in COUNT:
 		lines.append(Vector2.from_angle(_ang[i] - half) * dead_zone)
@@ -1115,7 +1295,7 @@ func _draw_cast_flash() -> void:
 	var k := clampf((_time - _cast_at) / 0.52, 0.0, 1.0)
 	if k >= 1.0:
 		return
-	var pos := Vector2.from_angle(_ang[_cast_index]) * _rad[_cast_index]
+	var pos := _pos[_cast_index]
 	var c := _skill_color(_cast_index)
 	_ga = 1.0
 	_glow(pos, 40.0 + 50.0 * k, c, 1.0 - k)
@@ -1702,3 +1882,625 @@ func _draw_ember() -> void:
 	_ring(Vector2.ZERO, 52, 1, Color(0, 0, 0, 0.55))
 	_center_info(-8, 21, 18, 11, 92, Color("ffd38a"), Color("e0a96a"), Color(1, 0.83, 0.54, 0.72), false, 0.0, 14.0)
 	_knob(Color("ff8a2a"))
+
+
+# ---------------------------------------------------------------- styles 11–20: the menu opens around the button
+
+func _ellipse_pts(rx: float, ry: float, a0: float, a1: float, n: int) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for k in n + 1:
+		var a := lerpf(a0, a1, float(k) / n)
+		pts.append(Vector2(cos(a) * rx, sin(a) * ry))
+	return pts
+
+
+func _closed_ellipse(rx: float, ry: float) -> PackedVector2Array:
+	var pts := _ellipse_pts(rx, ry, 0.0, TAU, 48)
+	pts.remove_at(pts.size() - 1)
+	return pts
+
+
+## Лепесток: две кубические кривые Безье, ось лепестка повёрнута на rot.
+func _petal_pts(r0: float, r1: float, w: float, rot: float) -> PackedVector2Array:
+	var ln := r1 - r0
+	var a := Vector2(r0, 0)
+	var b := Vector2(r1, 0)
+	var pts := PackedVector2Array()
+	for k in 13:
+		pts.append(a.bezier_interpolate(Vector2(r0 + ln * 0.3, -w * 0.9), Vector2(r1 - ln * 0.25, -w * 1.15), b, k / 12.0).rotated(rot))
+	for k in range(1, 12):
+		pts.append(b.bezier_interpolate(Vector2(r1 - ln * 0.25, w * 1.15), Vector2(r0 + ln * 0.3, w * 0.9), a, k / 12.0).rotated(rot))
+	return pts
+
+
+func _quad_pt(a: Vector2, c: Vector2, b: Vector2, u: float) -> Vector2:
+	return a * (1.0 - u) * (1.0 - u) + c * 2.0 * (1.0 - u) * u + b * u * u
+
+
+## Стрельчатое окно витража, ось повёрнута на rot.
+func _lancet_pts(r0: float, r1: float, step: float, rot: float, off: Vector2) -> PackedVector2Array:
+	var w0 := r0 * tan(step * 0.5) * 0.78
+	var rm := r1 - 30.0
+	var w1 := rm * tan(step * 0.5) * 0.82
+	var local := PackedVector2Array([Vector2(r0, -w0), Vector2(rm, -w1)])
+	for k in range(1, 9):
+		local.append(_quad_pt(Vector2(rm, -w1), Vector2(r1 - 6.0, -w1 * 0.85), Vector2(r1, 0), k / 8.0))
+	for k in range(1, 9):
+		local.append(_quad_pt(Vector2(r1, 0), Vector2(r1 - 6.0, w1 * 0.85), Vector2(rm, w1), k / 8.0))
+	local.append(Vector2(r0, w0))
+	return _rot_pts(local, rot, off)
+
+
+func _rot_pts(pts: PackedVector2Array, rot: float, off: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for q in pts:
+		out.append(Vector2(q).rotated(rot) + off)
+	return out
+
+
+func _gear_teeth(c: Vector2, r0: float, r1: float, teeth: int, rot: float, col: Color) -> void:
+	var st := TAU / teeth
+	for k in teeth:
+		var a := rot + k * st
+		_poly(PackedVector2Array([
+			c + Vector2.from_angle(a) * (r0 - 1.0), c + Vector2.from_angle(a + st * 0.18) * r1,
+			c + Vector2.from_angle(a + st * 0.47) * r1, c + Vector2.from_angle(a + st * 0.65) * (r0 - 1.0),
+		]), col)
+
+
+func _dashed_arc(r: float, a0: float, a1: float, c: Color, w: float) -> void:
+	if a1 <= a0 or r <= 0.0:
+		return
+	var pattern := PackedFloat32Array([18.0, 7.0, 5.0, 9.0])
+	var pts := PackedVector2Array()
+	var a := a0
+	var k := 0
+	while a < a1:
+		var len_a := pattern[k % 4] / r
+		if k % 2 == 0:
+			var b := minf(a + len_a, a1)
+			var steps := maxi(1, int((b - a) * r / 6.0))
+			for j in steps:
+				pts.append(Vector2.from_angle(lerpf(a, b, float(j) / steps)) * r)
+				pts.append(Vector2.from_angle(lerpf(a, b, float(j + 1) / steps)) * r)
+		a += len_a
+		k += 1
+	if pts.size() >= 2:
+		draw_multiline(pts, _col(c), w)
+
+
+## Название выбранного умения (или подсказка) в плашке над меню.
+func _around_label(y: float, bg: Color, border: Color, fg: Color, idle_fg: Color) -> void:
+	var on := _hover >= 0
+	var t := _t()
+	_ga = t * ((0.4 + 0.6 * _hover_t[_hover]) if on else 0.85)
+	var mp := skill_mp[_hover] if (on and _hover < skill_mp.size()) else 0
+	var text := ("%s · MP %d" % [_skill_name(_hover), mp]) if on else _idle_text()
+	var fs := 14.0 if on else 13.0
+	var w := _text_w(text, fs) + 24.0
+	var h := fs + 14.0
+	var pill := _rrect_pts(Rect2(-w * 0.5, y - h * 0.5, w, h), h * 0.5)
+	_poly(pill, bg)
+	_outline(pill, border, 1.0)
+	_text_center(text, Vector2(0, y), fs, fg if on else idle_fg)
+	_ga = t
+
+
+func _draw_trigger_around(open_t: float, pu: float, ga: float) -> void:
+	match style:
+		Style.HALO:
+			_glow(Vector2.ZERO, 64.0 + 8.0 * pu, Color("ffe6a0"), 0.35 + 0.35 * pu * (1.0 - open_t * 0.6))
+			for k in 12:
+				var d := Vector2.from_angle(_time * 0.3 + k * TAU / 12.0)
+				var n := d.orthogonal() * 1.6
+				_poly(PackedVector2Array([d * 34.0 + n, d * (42.0 if k % 2 == 1 else 48.0), d * 34.0 - n]), Color(1, 0.95, 0.77, 0.55))
+			_circ(Vector2.ZERO, 31, Color("f3cf7a"))
+			_circ(Vector2(-5, -7), 20, Color(1, 0.98, 0.91, 0.55))
+			_ring(Vector2.ZERO, 31, 1.5, Color(1, 1, 1, 0.85))
+			_wheel_glyph(Color("5a3d0c"), open_t)
+		Style.ARCH:
+			_glow(Vector2.ZERO, 58.0 + 8.0 * pu, Color("6fe3ff"), ga * 0.75)
+			_circ(Vector2.ZERO, 31, Color("7a7468"))
+			_circ(Vector2(-6, -8), 20, Color(0.7, 0.67, 0.61, 0.5))
+			_ring(Vector2.ZERO, 31, 2, Color("2b2723"))
+			_ring(Vector2.ZERO, 25, 1.2, Color(0.44, 0.89, 1, 0.45 + 0.4 * pu))
+			_wheel_glyph(Color("e8fbff"), open_t)
+		Style.FLOWER:
+			_glow(Vector2.ZERO, 58.0 + 8.0 * pu, Color("ff9cc8"), ga * 0.9)
+			for k in 6:
+				var pt := _petal_pts(4, 34, 12, k * TAU / 6.0 + _time * 0.2)
+				_poly(pt, Color("f07fb0"))
+				_outline(pt, Color(0.47, 0.12, 0.27, 0.5), 1.0)
+			_circ(Vector2.ZERO, 12, Color("f0c040"))
+			_circ(Vector2(-3, -3), 6, Color(1, 0.96, 0.76, 0.8))
+			_cross_glyph(Color("5a1d3a"), open_t)
+		Style.ORBIT:
+			_glow(Vector2.ZERO, 70.0 + 10.0 * pu, Color("ffb347"), 0.4 + 0.3 * pu)
+			var rays := PackedVector2Array()
+			for k in 16:
+				var d2 := Vector2.from_angle(_time * 0.5 + k * TAU / 16.0)
+				rays.append(d2 * 33.0)
+				rays.append(d2 * (38.0 if k % 2 == 1 else 42.0))
+			draw_multiline(rays, _col(Color(1, 0.82, 0.47, 0.7)), 2.0)
+			_circ(Vector2.ZERO, 30, Color("ffb13a"))
+			_circ(Vector2(-6, -7), 18, Color(1, 0.96, 0.82, 0.7))
+			_wheel_glyph(Color("7a3a06"), open_t, 12.0)
+		Style.SHIELD:
+			_glow(Vector2.ZERO, 60.0 + 8.0 * pu, Color("f3b45a"), ga * 0.85)
+			_circ(Vector2.ZERO, 31, Color("5f5853"))
+			_circ(Vector2(-7, -9), 18, Color(0.85, 0.82, 0.78, 0.45))
+			_ring(Vector2.ZERO, 31, 2.5, Color("24201d"))
+			for k in 8:
+				_circ(Vector2.from_angle(k * TAU / 8.0) * 26.0, 1.8, Color("d8d0c8"))
+			_wheel_glyph(Color("f3e2c0"), open_t, 12.0)
+		Style.GLASS:
+			_glow(Vector2.ZERO, 60.0 + 8.0 * pu, Color("fff1c8"), ga * 0.85)
+			_circ(Vector2.ZERO, 31, Color("1d1b19"))
+			for k in 6:
+				var a := -PI / 2.0 + k * TAU / 6.0
+				_poly(_sector_pts(9, 28, a - PI / 6.0, a + PI / 6.0, 1.6), Color(_skill_color((k * 3) % COUNT), 0.85))
+			_circ(Vector2.ZERO, 8, Color("fff1c8"))
+			_ring(Vector2.ZERO, 30, 2, Color("6f6a62"))
+			_cross_glyph(Color.WHITE, open_t)
+		Style.GEARS:
+			_glow(Vector2.ZERO, 60.0 + 8.0 * pu, Color("ffb347"), ga * 0.85)
+			_circ(Vector2.ZERO, 28, Color("c9963f"))
+			_gear_teeth(Vector2.ZERO, 28, 35, 10, _time * 0.6, Color("c9963f"))
+			_circ(Vector2.ZERO, 22, Color("2a1d10"))
+			_ring(Vector2.ZERO, 22, 2, Color("6e4a1c"))
+			_wheel_glyph(Color("ffd38a"), open_t, 12.0)
+		Style.BUBBLES:
+			_glow(Vector2.ZERO, 60.0 + 8.0 * pu, Color("7fdcff"), ga * 0.85)
+			_circ(Vector2.ZERO, 31, Color(0.2, 0.62, 0.82, 0.9))
+			_circ(Vector2(-6, -8), 18, Color(0.86, 0.98, 1, 0.5))
+			_ring(Vector2.ZERO, 31, 1.5, Color(0.9, 0.98, 1, 0.9))
+			_ring(Vector2.ZERO, 25, 3, Color(1, 1, 1, 0.8), PI * 1.1, PI * 1.45)
+			_wheel_glyph(Color("0d3a50"), open_t, 12.0)
+		Style.INK:
+			_glow(Vector2.ZERO, 56.0 + 8.0 * pu, Color("ff6a4a"), ga * 0.6)
+			_poly(_wobble_pts(Vector2.ZERO, 31, 2.0, 36, 0.05), Color("1a1714"))
+			_circ(Vector2(14, -14), 5, Color("c8321e"))
+			_wheel_glyph(Color("f4eee0"), open_t, 12.0)
+		Style.CLEAN:
+			_glow(Vector2.ZERO, 54.0 + 8.0 * pu, Color("7fa8ff"), ga * 0.6)
+			_circ(Vector2(0, 4), 33, Color(0, 0, 0, 0.22))
+			_circ(Vector2.ZERO, 31, Color.WHITE)
+			var d1 := Vector2.from_angle(open_t * PI / 4.0) * 11.0
+			var d3 := d1.orthogonal()
+			_line(-d1, d1, Color("3d7bfd"), 4.5)
+			_line(-d3, d3, Color("3d7bfd"), 4.5)
+
+
+func _draw_halo() -> void:
+	var rr := 104.0
+	var t := _t()
+	var cl := _closing()
+	if not cl and _raw < 1.0:
+		_ga = 1.0
+		_glow(Vector2.ZERO, 120.0 + 80.0 * _raw, Color("fff0c0"), 0.55 * (1.0 - _raw))
+		_ring(Vector2.ZERO, 34.0 + 150.0 * _out_cubic(_raw), 6.0 * (1.0 - _raw) + 0.05, Color(1, 0.95, 0.77, 0.85 * (1.0 - _raw)))
+	_ga = t
+	_ring(Vector2.ZERO, rr, 48, Color(1, 0.93, 0.7, 0.12))
+	_ring(Vector2.ZERO, rr, 1.6, Color(1, 0.95, 0.77, 0.6))
+	for k in 20:
+		var d := Vector2.from_angle(_time * 0.15 + k * TAU / 20.0)
+		var n := d.orthogonal() * 3.0
+		_poly(PackedVector2Array([d * 36.0 + n, d * 150.0, d * 36.0 - n]), Color(1, 0.94, 0.78, 0.07))
+	if _hover >= 0:
+		var h := _hover_t[_hover]
+		_grad_line(Vector2.ZERO, _pos[_hover], 10.0, Color(1, 0.95, 0.77, 0), Color(1, 0.98, 0.88, 0.3 * h))
+		_grad_line(Vector2.ZERO, _pos[_hover], 2.2, Color(1, 0.95, 0.77, 0), Color(1, 0.98, 0.88, 0.9 * h))
+	for i in _order():
+		var p := _stag(i, 0.5)
+		var e := p if cl else _out_back(p, 1.8)
+		var h := _hover_t[i]
+		var pos := Vector2.from_angle(_ang[i]) * (rr * e + 8.0 * h) + Vector2(_shake(i), 0)
+		var sz := 50.0 * (0.5 + 0.5 * minf(e, 1.0)) * (1.0 + 0.2 * h)
+		_ga = _slot_alpha(p, 2.0)
+		_glow(pos, sz * 1.15, Color("ffe6a0"), 0.3 + 0.6 * h)
+		_circ(pos, sz * 0.5, Color("1b1830"))
+		_icon(i, pos, sz - 6.0)
+		_cooldown(i, pos, sz - 6.0)
+		_ring(pos, sz * 0.5 - 1.0, 2.0 + 1.5 * h, Color("f3d58e").lerp(Color.WHITE, h))
+		_ring(pos, sz * 0.5 - 4.0, 2.0, Color(1, 1, 1, 0.6), PI * 1.1, PI * 1.45)
+	_around_label(-(rr + 53.0), Color(1, 0.97, 0.88, 0.94), Color(0.66, 0.47, 0.16, 0.6), Color("5a3d0c"), Color("8a6a2a"))
+	_knob(Color("ffd36b"))
+
+
+func _draw_arch() -> void:
+	var lay := _layout()
+	var t := _t()
+	var cl := _closing()
+	var step := PI / 10.0
+	_ga = t * 0.6
+	_poly(_rot_pts(_closed_ellipse(222, 20), 0.0, Vector2(0, 6)), Color(0, 0, 0, 0.35))
+	for i in _order():
+		var p := _stag(i, 0.6)
+		var e := 1.0 if cl else _out_back(p, 1.3)
+		var h := _hover_t[i]
+		var a := _ang[i]
+		var dir := Vector2.from_angle(a)
+		var off := dir * 10.0 * h + Vector2(_shake(i), -(1.0 - e) * 70.0)
+		_ga = _slot_alpha(p, 2.2)
+		var r1 := lay.r_out + 6.0 * h
+		var pts := _sector_pts(lay.r_in, r1, a - step * 0.5, a + step * 0.5, 1.6, off)
+		var cols := PackedColorArray()
+		var half := int(pts.size() * 0.5)
+		for k in pts.size():
+			cols.append(Color("a9a294") if k < half else Color("56514a"))
+		_poly_grad(pts, cols)
+		_outline(pts, Color(0.11, 0.094, 0.078, 0.85), 1.5)
+		_ring(off, r1 - 2.5, 1.5, Color(1, 0.98, 0.92, 0.35), a - step * 0.5 + 0.02, a + step * 0.5 - 0.02)
+		_line(off + dir * (lay.r_in + 12.0), off + dir * (lay.r_in + 20.0) + dir.orthogonal() * 5.0, Color(0.12, 0.1, 0.086, 0.5), 1.0)
+		if h > 0.01:
+			_outline(_sector_pts(lay.r_in + 4.0, r1 - 4.0, a - step * 0.5 + 0.02, a + step * 0.5 - 0.02, 1.6, off), Color(0.44, 0.89, 1, 0.85 * h), 2.0)
+			_glow(off + dir * lay.r, 64, Color("6fe3ff"), 0.35 * h)
+		var ip := off + dir * lay.r
+		var sz := 40.0 * (1.0 + 0.12 * h)
+		_circ(ip, sz * 0.5 + 3.0, Color("2f2b26"))
+		_icon(i, ip, sz, SH_CIRCLE, 1.0 - 0.35 * _any * (1.0 - h))
+		_cooldown(i, ip, sz)
+		_ring(ip, sz * 0.5 + 1.5, 2.0, Color(0, 0, 0, 0.6))
+	_ga = t
+	var ro := lay.r_out
+	var key := PackedVector2Array([Vector2(-10, -ro + 2), Vector2(10, -ro + 2), Vector2(6, -ro - 16), Vector2(-6, -ro - 16)])
+	_poly(key, Color("9c9587"))
+	_outline(key, Color(0.11, 0.094, 0.078, 0.85), 1.2)
+	_around_label(-(ro + 40.0), Color(0.18, 0.16, 0.145, 0.94), Color("8a8274"), Color("efe6d2"), Color("bdb4a3"))
+	_knob(Color("6fe3ff"))
+
+
+func _draw_flower() -> void:
+	var lay := _layout()
+	var t := _t()
+	var cl := _closing()
+	var mid := lay.start + lay.sweep * 0.5
+	var grow := 1.0 if cl else _out_cubic(_raw)
+	_ga = t
+	if grow > 0.05:
+		for k in 8:
+			var leaf := _petal_pts(24, 24.0 + 30.0 * grow, 9, k * TAU / 8.0 + 0.2)
+			_poly(leaf, Color("4a9f55"))
+			_outline(leaf, Color(0.08, 0.24, 0.1, 0.6), 1.0)
+	for i in _order():
+		var rank := absf(i - (COUNT - 1) * 0.5) / ((COUNT - 1) * 0.5)
+		var p := _stag(i, 0.45, rank)
+		var e := 1.0 if cl else _out_back(p, 1.4)
+		var h := _hover_t[i]
+		var a := lerpf(mid, _ang[i], minf(1.0, e))
+		var r1 := 34.0 + 126.0 * e + 18.0 * h
+		var dir := Vector2.from_angle(a)
+		_ga = _slot_alpha(p, 2.0)
+		if r1 - 34.0 > 3.0:
+			var pts := _petal_pts(34, r1, 24, a)
+			var mid_col := Color("f07fb0").lerp(Color("ff5fa2"), h)
+			var cols := PackedColorArray()
+			for q in pts:
+				var u := clampf((Vector2(q).dot(dir) - 34.0) / (r1 - 34.0), 0.0, 1.0)
+				cols.append(Color("ffe3ef").lerp(mid_col, u / 0.55) if u < 0.55 else mid_col.lerp(Color("c94f86"), (u - 0.55) / 0.45))
+			_poly_grad(pts, cols)
+			if _any > 0.0 and h < 1.0:
+				_poly(pts, Color(0.16, 0.04, 0.12, 0.25 * _any * (1.0 - h)))
+			_outline(pts, Color(1, 1, 1, 0.95) if h > 0.5 else Color(0.47, 0.12, 0.27, 0.45), 1.2 + h)
+			_line(dir * 40.0, dir * (r1 - 14.0), Color(1, 1, 1, 0.35), 1.0)
+		var ip := dir * (116.0 * minf(e, 1.05) + 10.0 * h) + Vector2(_shake(i), 0)
+		var sz := 44.0 * (1.0 + 0.14 * h) * clampf(e, 0.0, 1.0)
+		if sz > 2.0:
+			_circ(ip, sz * 0.5 + 2.5, Color("fff4f8"))
+			_icon(i, ip, sz)
+			_cooldown(i, ip, sz)
+	_ga = t
+	if _hover >= 0:
+		var h2 := _hover_t[_hover]
+		for k in 7:
+			var tw := 0.5 + 0.5 * sin(_time * 4.0 + k * 1.7)
+			var rr := 128.0 + 44.0 * float((k * 37) % 10) / 10.0
+			var aa := _ang[_hover] + ((k % 3) - 1) * 0.13
+			_glow(Vector2.from_angle(aa) * rr, 6.0 + 5.0 * tw, Color("fff2a8"), h2 * tw)
+	_around_label(-208.0, Color(1, 0.96, 0.97, 0.95), Color(0.79, 0.31, 0.53, 0.6), Color("5a1d3a"), Color("8a4a68"))
+	_knob(Color("ff9cc8"))
+
+
+func _draw_orbit() -> void:
+	var lay := _layout()
+	var t := _t()
+	var cl := _closing()
+	var e0 := 1.0 if cl else _out_cubic(_raw)
+	_ga = t
+	_poly(_closed_ellipse(lay.rx + 50.0, lay.ry + 30.0), Color(0.05, 0.08, 0.2, 0.45))
+	_poly(_closed_ellipse(lay.rx + 10.0, lay.ry + 6.0), Color(0.08, 0.12, 0.3, 0.4))
+	_poly(_closed_ellipse(lay.rx * 0.6, lay.ry * 0.6), Color(0.1, 0.15, 0.36, 0.3))
+	for k in _orbit_stars.size():
+		var st := _orbit_stars[k]
+		_circ(Vector2(st.x, st.y), st.z, Color(0.86, 0.92, 1, 0.25 + 0.5 * (0.5 + 0.5 * sin(_time * 2.0 + k * 0.7))))
+	if e0 > 0.01:
+		draw_polyline(_ellipse_pts(lay.rx, lay.ry, -PI / 2.0, -PI / 2.0 + TAU * e0, 72), _col(Color(0.63, 0.78, 1, 0.5)), 1.2, true)
+	for f in [0.6, 1.18]:
+		var dots := _ellipse_pts(lay.rx * f, lay.ry * f, 0.0, TAU, 64)
+		var seg := PackedVector2Array()
+		for k in range(0, dots.size() - 1, 2):
+			seg.append(dots[k])
+			seg.append(dots[k + 1])
+		draw_multiline(seg, _col(Color(0.63, 0.78, 1, 0.28)), 1.0)
+	_glow(Vector2.ZERO, 92, Color("ffb347"), 0.5)
+	if _hover >= 0:
+		var tp := _par[_hover]
+		draw_polyline(_ellipse_pts(lay.rx, lay.ry, tp - 0.32, tp + 0.32, 16), _col(Color(0.84, 0.93, 1, 0.9 * _hover_t[_hover])), 3.0, true)
+	var ord := Array(_order())
+	ord.sort_custom(func(a: int, b: int) -> bool:
+		if (a == _hover) != (b == _hover):
+			return b == _hover
+		return _pos[a].y < _pos[b].y)
+	for i in ord:
+		var p := _stag(i, 0.5)
+		var e := 1.0 if cl else _out_cubic(p)
+		var h := _hover_t[i]
+		var tp2 := _par[i] - (1.0 - e) * 1.4
+		var rs := 0.3 + 0.7 * e
+		var pos := Vector2(cos(tp2) * lay.rx * rs + _shake(i), sin(tp2) * lay.ry * rs)
+		var depth := 0.84 + 0.16 * ((sin(tp2) + 1.0) * 0.5)
+		var sz := 46.0 * depth * (1.0 + 0.22 * h) * (0.4 + 0.6 * e)
+		_ga = _slot_alpha(p, 2.0)
+		_glow(pos, sz * 0.95, _skill_color(i), 0.25 + 0.5 * h)
+		_icon(i, pos, sz)
+		var sun := -pos.normalized()
+		var circ := _shape_pts(SH_CIRCLE, pos, sz)
+		var shade := PackedColorArray()
+		for q in circ:
+			var dd := (Vector2(q) - pos).normalized().dot(sun)
+			shade.append(Color(0.01, 0.02, 0.06, clampf(-dd * 0.65, 0.0, 0.62)))
+		_poly_grad(circ, shade)
+		_cooldown(i, pos, sz)
+		_ring(pos, sz * 0.5, 1.0 + 1.5 * h, Color("d6ecff") if h > 0.5 else Color(0.63, 0.78, 1, 0.5))
+		if h > 0.05:
+			var ma := _time * 2.4
+			_circ(pos + Vector2(cos(ma) * sz * 0.78, sin(ma) * sz * 0.3), 3.2, Color(0.9, 0.94, 1, h))
+	_around_label(-(lay.ry + 52.0), Color(0.05, 0.08, 0.2, 0.92), Color(0.63, 0.78, 1, 0.55), Color("d6ecff"), Color("9fb8d8"))
+	_knob(Color("a0c8ff"))
+
+
+func _draw_shield() -> void:
+	var lay := _layout()
+	var t := _t()
+	var cl := _closing()
+	var step := TAU / COUNT
+	var e := 1.0 if cl else _out_back(_raw, 1.6)
+	var sc := (0.9 + 0.1 * t) if cl else maxf(0.05, e)
+	_local_xf((1.0 - minf(e, 1.0)) * -0.5, sc)
+	_ga = t
+	_circ(Vector2(3, 6), 134, Color(0, 0, 0, 0.35))
+	for i in _order():
+		var h := _hover_t[i]
+		var a := _ang[i]
+		var off := Vector2.from_angle(a) * 6.0 * h + Vector2(_shake(i), 0)
+		var pts := _sector_pts(lay.r_in, lay.r_out, a - step * 0.5, a + step * 0.5, 0.6, off)
+		_poly(pts, Color("e3d3b2") if i % 2 == 1 else Color("9e2b25"))
+		var grain := Color(0.47, 0.35, 0.2, 0.22) if i % 2 == 1 else Color(0.16, 0.03, 0.02, 0.25)
+		for k in 6:
+			_ring(off, 48.0 + k * 13.0 + (i * 7) % 5, 1.0, grain, a - step * 0.5 + 0.02, a + step * 0.5 - 0.02)
+		if h > 0.01:
+			_poly(pts, Color(1, 0.93, 0.75, 0.3 * h))
+		if _any > 0.0 and h < 1.0:
+			_poly(pts, Color(0.04, 0.02, 0.016, 0.3 * _any * (1.0 - h)))
+		_outline(pts, Color(0.12, 0.07, 0.04, 0.8), 1.5)
+		var ip := off + Vector2.from_angle(a) * lay.r
+		var sz := 40.0 * (1.0 + 0.14 * h)
+		_circ(ip, sz * 0.5 + 2.5, Color(0.094, 0.055, 0.03, 0.88))
+		_icon(i, ip, sz)
+		_cooldown(i, ip, sz)
+		_ring(ip, sz * 0.5 + 1.0, 1.5 + h, Color("f3c26a") if h > 0.5 else Color("2a1a10"))
+	_ga = t
+	_ring(Vector2.ZERO, lay.r_out + 5.0, 10.0, Color("4a4440"))
+	_ring(Vector2.ZERO, lay.r_out + 8.0, 2.0, Color(0.86, 0.82, 0.78, 0.35), PI * 1.05, PI * 1.6)
+	for k in 20:
+		_circ(Vector2.from_angle(k * TAU / 20.0 + step / 4.0) * (lay.r_out + 5.0), 2.4, Color("9a918a"))
+	_ring(Vector2.ZERO, lay.r_in, 4.0, Color("3a3532"))
+	if _hover >= 0:
+		var d := Vector2.from_angle(_ang[_hover])
+		var n := d.orthogonal() * 8.0
+		_poly(PackedVector2Array([d * (lay.r_out + 4.0), d * (lay.r_out + 18.0) + n, d * (lay.r_out + 18.0) - n]), Color(0.95, 0.76, 0.42, _hover_t[_hover]))
+	_local_xf()
+	_around_label(-(lay.r_out + 44.0), Color(0.23, 0.16, 0.11, 0.95), Color("c9a46a"), Color("f3e2c0"), Color("cdb58f"))
+	_knob(Color("f3c26a"))
+
+
+func _draw_glass() -> void:
+	var t := _t()
+	var cl := _closing()
+	var step := TAU / COUNT
+	var sweep_a := TAU + 1.0 if cl else (TAU + 1.0) * (-(cos(PI * clampf(_raw / 0.85, 0.0, 1.0)) - 1.0) * 0.5)
+	_ga = t
+	_circ(Vector2.ZERO, 140, Color(0.063, 0.055, 0.078, 0.62))
+	_ring(Vector2.ZERO, 136, 9, Color("6f6a62"))
+	_ring(Vector2.ZERO, 131, 1.5, Color(1, 0.98, 0.94, 0.3))
+	for i in _order():
+		var a := _ang[i]
+		var h := _hover_t[i]
+		var col := _skill_color(i)
+		var appear := clampf((sweep_a - fposmod(a + PI / 2.0, TAU)) / 0.6, 0.0, 1.0)
+		var off := Vector2(_shake(i), 0)
+		var d := Vector2.from_angle(a)
+		_ga = t * appear
+		var pts := _lancet_pts(44, 128, step, a, off)
+		_poly(pts, col.darkened(0.55))
+		_poly(_lancet_pts(54, 118, step * 0.74, a, off), Color(col, 0.78 + 0.22 * h))
+		if _any > 0.0 and h < 1.0:
+			_poly(pts, Color(0.047, 0.04, 0.08, 0.5 * _any * (1.0 - h)))
+		_outline(pts, Color("1d1b19"), 3.0)
+		_line(off + d * 50.0, off + d * 68.0, Color("1d1b19"), 2.0)
+		_line(off + d * 112.0, off + d * 124.0, Color("1d1b19"), 2.0)
+		if h > 0.01:
+			_ga = t
+			_glow(d * 90.0, 84, col, 0.75 * h)
+		_ga = t * appear
+		var ip := d * 90.0 + off
+		var sz := 38.0 * (1.0 + 0.16 * h)
+		_circ(ip, sz * 0.5 + 3.0, Color("1d1b19"))
+		_icon(i, ip, sz, SH_CIRCLE, 0.85 + 0.15 * h)
+		_cooldown(i, ip, sz)
+	_ga = t
+	for i in COUNT:
+		var rp := Vector2.from_angle(_ang[i] + step * 0.5) * 124.0
+		_circ(rp, 7, Color(1, 0.77, 0.35, 0.78))
+		_ring(rp, 7, 2.2, Color("1d1b19"))
+	_ring(Vector2.ZERO, 40, 4, Color("1d1b19"))
+	if not cl and _raw < 1.0:
+		var sa := -PI / 2.0 + sweep_a
+		var wedge := PackedVector2Array([Vector2.ZERO])
+		for k in 9:
+			wedge.append(Vector2.from_angle(sa - 0.4 + 0.4 * k / 8.0) * 136.0)
+		_poly(wedge, Color(1, 0.98, 0.9, 0.22))
+	var on := _hover >= 0
+	_around_label(-170.0, Color(0.11, 0.106, 0.098, 0.95), _skill_color(_hover) if on else Color("6f6a62"), _skill_color(_hover) if on else Color("e8e2d6"), Color("b9b2a6"))
+	_knob(Color("fff1c8"))
+
+
+func _draw_gears() -> void:
+	var t := _t()
+	var cl := _closing()
+	var step := TAU / COUNT
+	var rot := 0.0 if cl else (1.0 - _out_back(_raw, 2.2)) * -0.63
+	var brass_c := Color("c9963f")
+	var dark := Color("4a3210")
+	_ga = t
+	var sp := Vector2.from_angle(-2.36) * 164.0
+	_circ(sp, 18, brass_c)
+	_gear_teeth(sp, 18, 26, 9, -rot * 4.4 - 0.3, brass_c)
+	_ring(sp, 18, 1.2, dark)
+	_circ(sp, 6, Color("2a1d10"))
+	_ring(Vector2.ZERO, 104, 48, brass_c)
+	_gear_teeth(Vector2.ZERO, 128, 138, 40, rot, brass_c)
+	_ring(Vector2.ZERO, 126, 3, Color("f0c96e"), PI * 0.95, PI * 1.6)
+	_ring(Vector2.ZERO, 82, 3, Color("6e4a1c"), PI * 0.95, PI * 1.6)
+	_ring(Vector2.ZERO, 128, 1.5, dark)
+	_ring(Vector2.ZERO, 80, 1.5, dark)
+	for k in 5:
+		var d := Vector2.from_angle(rot - PI / 2.0 + step * 0.5 + k * 2.0 * step)
+		_line(d * 44.0, d * 82.0, Color("a87a30"), 10.0)
+	_ring(Vector2.ZERO, 44, 8, Color("b8893a"))
+	for i in COUNT:
+		var sock := Vector2.from_angle(_ang[i] + rot) * 104.0
+		_circ(sock, 23, Color("2a1d10"))
+		_ring(sock, 23, 2, Color("6e4a1c"))
+	for i in _order():
+		var p := _stag(i, 0.4)
+		var h := _hover_t[i]
+		var pos := Vector2.from_angle(_ang[i] + rot) * 104.0 + Vector2(_shake(i), 0)
+		var sz := 38.0 * (1.0 + 0.16 * h) * (0.5 + 0.5 * _out_cubic(p))
+		_ga = _slot_alpha(p, 1.8)
+		if h > 0.01:
+			_glow(pos, 44, Color("ffb347"), 0.9 * h)
+		_icon(i, pos, sz)
+		_cooldown(i, pos, sz)
+		_ring(pos, sz * 0.5 + 1.0, 2.0, Color("6e4a1c").lerp(Color("ffb347"), h))
+	_ga = t
+	if _hover >= 0:
+		var d2 := Vector2.from_angle(_ang[_hover] + rot)
+		var n := d2.orthogonal() * 7.0
+		_poly(PackedVector2Array([d2 * 140.0, d2 * 156.0 + n, d2 * 156.0 - n]), Color(1, 0.7, 0.28, _hover_t[_hover]))
+	_around_label(-182.0, Color(0.165, 0.114, 0.063, 0.95), brass_c, Color("ffd38a"), Color("c9a46a"))
+	_knob(Color("ffb347"))
+
+
+func _draw_bubbles() -> void:
+	var t := _t()
+	var cl := _closing()
+	_ga = t
+	for b in _embers:
+		var k: float = b.life / b.max_life
+		var bp: Vector2 = b.pos
+		var br: float = b.size
+		_ring(bp + Vector2(sin(_time * 3.0 + br * 7.0) * 3.0, 0), br, 1.0, Color(0.78, 0.96, 1, 0.6 * (1.0 - k)))
+	for i in _order():
+		var outer := i >= 4
+		var p := _stag(i, 0.5, (0.45 + (i - 4) / 11.0) if outer else i / 10.0)
+		var e := 1.0 if cl else _out_back(p, 1.7)
+		var h := _hover_t[i]
+		var pos := _pos[i] * e + Vector2(_shake(i), sin(_time * 2.0 + i * 1.3) * 2.5)
+		var sz := (48.0 if outer else 54.0) * (0.5 + 0.5 * minf(e, 1.0)) * (1.0 + 0.2 * h) * (1.0 + 0.02 * sin(_time * 3.0 + i))
+		_ga = _slot_alpha(p, 2.0)
+		_glow(pos, sz, Color("7fdcff"), 0.2 + 0.5 * h)
+		_circ(pos, sz * 0.5, Color(Color("1b6f8f").lerp(_skill_color(i), 0.3 * h), 0.38 + 0.12 * h))
+		_icon(i, pos, sz * 0.74, SH_CIRCLE, 0.92)
+		_cooldown(i, pos, sz * 0.74)
+		_ring(pos, sz * 0.5, 1.4 + 1.2 * h, Color("e8fbff") if h > 0.5 else Color(0.62, 0.91, 1, 0.8))
+		_ring(pos, sz * 0.5 - 4.0, 2.5, Color(1, 1, 1, 0.75), PI * 1.1, PI * 1.5)
+		_circ(pos + Vector2(sz * 0.22, sz * 0.22), 2, Color(1, 1, 1, 0.6))
+	_around_label(-230.0, Color(0.04, 0.16, 0.22, 0.92), Color(0.62, 0.91, 1, 0.6), Color("e8fbff"), Color("a9d8e8"))
+	_knob(Color("9fe8ff"))
+
+
+func _draw_ink() -> void:
+	var lay := _layout()
+	var t := _t()
+	var cl := _closing()
+	var q := 1.0 if cl else -(cos(PI * clampf(_raw / 0.8, 0.0, 1.0)) - 1.0) * 0.5
+	var rr := lay.r
+	var a0 := lay.start - 0.18
+	var full := lay.sweep + 0.36
+	var span := full * q
+	_ga = t * 0.94
+	_poly(_wobble_pts(Vector2.ZERO, 150, 1.0, 48, 0.012), Color(0.957, 0.933, 0.878, 0.9))
+	_ga = t
+	if span > 0.02:
+		var outer := PackedVector2Array()
+		var inner := PackedVector2Array()
+		for k in 73:
+			var u := k / 72.0
+			var a := a0 + span * u
+			var w := (14.0 + 4.0 * sin(u * 9.0 + 1.0)) * minf(1.0, u * full / 0.2) * pow(1.0 - pow(u * q, 3.0), 0.7) + 1.0
+			outer.append(Vector2.from_angle(a) * (rr + w * 0.5))
+			inner.append(Vector2.from_angle(a) * (rr - w * 0.5))
+		inner.reverse()
+		outer.append_array(inner)
+		_poly(outer, Color("1a1714"))
+		for o in [-12.0, 10.0, 14.0]:
+			_dashed_arc(rr + o, a0 + 0.12, a0 + span * 0.92, Color(0.1, 0.09, 0.08, 0.55), 1.2)
+	for i in _order():
+		var a := _ang[i]
+		var appear := clampf((span - (a - a0)) / 0.3, 0.0, 1.0)
+		if appear <= 0.0:
+			continue
+		var h := _hover_t[i]
+		var pos := Vector2.from_angle(a) * rr + Vector2(_shake(i), 0)
+		var sz := 42.0 * (1.0 + 0.18 * h) * (0.7 + 0.3 * appear)
+		_ga = appear * (t if cl else 1.0)
+		_circ(pos, sz * 0.5 + 4.0, Color("f4eee0"))
+		_icon(i, pos, sz)
+		_cooldown(i, pos, sz)
+		_ring(pos, sz * 0.5 + 1.0, 2.5, Color("1a1714"))
+		if h > 0.01:
+			var sp := Vector2.from_angle(a) * (rr - 40.0)
+			var s := 22.0 * (0.6 + 0.4 * h)
+			_ga = appear * h
+			_poly(_rot_pts(_rrect_pts(Rect2(-s * 0.5, -s * 0.5, s, s), 3.0), -0.12, sp), Color("c8321e"))
+			_outline(_rot_pts(_rrect_pts(Rect2(-s * 0.5 + 3.0, -s * 0.5 + 3.0, s - 6.0, s - 6.0), 2.0), -0.12, sp), Color(1, 0.94, 0.9, 0.85), 1.0)
+			_text_center(str((i + 1) % 10), sp, s * 0.55, Color("fff4ec"))
+	_ga = t
+	_around_label(-(rr + 53.0), Color(0.957, 0.933, 0.878, 0.96), Color("1a1714"), Color("1a1714"), Color("5a534a"))
+	_knob(Color("c8321e"))
+
+
+func _draw_clean() -> void:
+	var lay := _layout()
+	var t := _t()
+	var cl := _closing()
+	_ga = t * 0.6
+	_ring(Vector2.ZERO, lay.r, 1.0, Color(1, 1, 1, 0.35), lay.start - 0.12, lay.start + lay.sweep + 0.12)
+	_ring(Vector2.ZERO, lay.r2, 1.0, Color(1, 1, 1, 0.35), lay.start - 0.12, lay.start + lay.sweep + 0.12)
+	for i in _order():
+		var p := _stag(i, 0.5, (0.5 if i % 2 == 1 else 0.0) + i / 20.0)
+		var e := 1.0 if cl else _out_back(p, 2.2)
+		var h := _hover_t[i]
+		var pos := _pos[i] * e + Vector2(_shake(i), 0)
+		var sz := 46.0 * (1.0 + 0.18 * h) * (0.4 + 0.6 * minf(e, 1.0))
+		_ga = _slot_alpha(p, 2.0) * (1.0 - 0.25 * _any * (1.0 - h))
+		_circ(pos + Vector2(0, 4), sz * 0.5 + 3.0, Color(0, 0, 0, 0.2))
+		_circ(pos, sz * 0.5 + 3.0, Color(1, 1, 1, 0.96))
+		_icon(i, pos, sz - 4.0)
+		_cooldown(i, pos, sz - 4.0)
+		if h > 0.01:
+			_ring(pos, sz * 0.5 + 4.5, 3.0, Color(0.24, 0.48, 0.99, h))
+	_ga = t
+	_around_label(-(lay.r2 + 55.0), Color(1, 1, 1, 0.97), Color(0.11, 0.14, 0.2, 0.12), Color("1d2433"), Color("4a5468"))
+	_knob(Color("3d7bfd"))

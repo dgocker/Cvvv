@@ -41,7 +41,7 @@ func _ready() -> void:
 
 	_build_toolbar()
 	_build_log()
-	_apply_style(0, false)
+	_apply_style(int(MenuScript.Style.HALO), false)
 
 
 func _build_toolbar() -> void:
@@ -107,7 +107,7 @@ func _build_log() -> void:
 ## preview — сразу открыть меню, чтобы увидеть стиль.
 func _apply_style(i: int, preview: bool = true) -> void:
 	menu.style = posmod(i, MenuScript.STYLE_NAMES.size()) as MenuScript.Style
-	title.text = "%d/10  %s" % [int(menu.style) + 1, MenuScript.STYLE_NAMES[int(menu.style)]]
+	title.text = "%d/%d  %s" % [int(menu.style) + 1, MenuScript.STYLE_NAMES.size(), MenuScript.STYLE_NAMES[int(menu.style)]]
 	if preview:
 		menu.open_menu()
 
